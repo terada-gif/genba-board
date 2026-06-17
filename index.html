@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>デジタル朝礼ボード</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>デジタル朝礼ボード</h1>
+        <p>整備工場 作業カード</p>
+      </div>
+      <div class="topbar-actions">
+        <label class="toggle-control">
+          <input id="show-done-input" type="checkbox" checked />
+          完了を表示
+        </label>
+        <button id="members-button" class="secondary-button" type="button">メンバー設定</button>
+        <button id="add-card-button" class="primary-button" type="button">＋ 案件追加</button>
+      </div>
+    </header>
+
+    <nav id="mobile-tabs" class="mobile-tabs" aria-label="担当者タブ"></nav>
+
+    <main class="board-shell" aria-label="担当者別作業ボード">
+      <aside id="complete-drop-zone" class="complete-drop-zone" aria-label="完了ボックス">
+        完了ボックス
+        <span>ここにカードを移動</span>
+      </aside>
+      <section id="board" class="board"></section>
+      <section id="mobile-list" class="mobile-list" aria-live="polite"></section>
+    </main>
+
+    <dialog id="card-dialog" class="card-dialog">
+      <form id="card-form" method="dialog">
+        <div class="dialog-head">
+          <h2 id="dialog-title">案件カード</h2>
+          <button class="icon-button" type="button" id="close-dialog-button" aria-label="閉じる">×</button>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            社名
+            <input id="company-input" name="company" autocomplete="organization" required />
+          </label>
+          <label>
+            ナンバー下4桁
+            <input id="plate-input" name="plate" inputmode="numeric" maxlength="4" required />
+          </label>
+          <label>
+            車名
+            <input id="car-input" name="car" required />
+          </label>
+          <label>
+            作業内容
+            <input id="work-input" name="work" required />
+          </label>
+          <label>
+            顧客名
+            <input id="customer-input" name="customer" autocomplete="name" required />
+          </label>
+          <label>
+            担当者
+            <select id="assignee-input" name="assignee"></select>
+          </label>
+          <label>
+            ステータス
+            <select id="status-input" name="status"></select>
+          </label>
+        </div>
+
+        <div class="dialog-actions">
+          <button id="delete-card-button" class="danger-button" type="button">削除</button>
+          <div>
+            <button class="secondary-button" type="button" id="complete-card-button">完了にする</button>
+            <button class="primary-button" type="submit">保存</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="members-dialog" class="members-dialog">
+      <form id="members-form" method="dialog">
+        <div class="dialog-head">
+          <h2>メンバー設定</h2>
+          <button class="icon-button" type="button" id="close-members-button" aria-label="閉じる">×</button>
+        </div>
+
+        <div class="members-tools">
+          <button id="add-person-button" class="secondary-button" type="button">＋ 作業者追加</button>
+          <button id="seed-people-button" class="secondary-button" type="button">8人サンプルにする</button>
+        </div>
+
+        <div id="members-list" class="members-list"></div>
+
+        <div class="dialog-actions">
+          <p class="dialog-note">非表示にしても案件は残ります。</p>
+          <button class="primary-button" type="button" id="save-members-button">閉じる</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
