@@ -18,7 +18,6 @@ const STATUSES = [
 
 const CARDS_STORAGE_KEY = "morning-board-cards-v1";
 const PEOPLE_STORAGE_KEY = "morning-board-people-v1";
-const SETTINGS_STORAGE_KEY = "morning-board-settings-v1";
 const ALL_PEOPLE_TAB = "all";
 const HISTORY_DAYS = 30;
 
@@ -78,7 +77,6 @@ const dialog = document.querySelector("#card-dialog");
 const form = document.querySelector("#card-form");
 const addButton = document.querySelector("#add-card-button");
 const membersButton = document.querySelector("#members-button");
-const morningModeButton = document.querySelector("#morning-mode-button");
 const historyButton = document.querySelector("#history-button");
 const closeButton = document.querySelector("#close-dialog-button");
 const completeButton = document.querySelector("#complete-card-button");
@@ -107,14 +105,9 @@ const fields = {
 
 let people = loadPeople();
 let cards = loadCards();
-let settings = loadSettings();
 let editingCardId = null;
 let dragState = null;
 let activeMobileTab = ALL_PEOPLE_TAB;
-
-document.body.classList.toggle("morning-mode", settings.morningMode);
-morningModeButton.setAttribute("aria-pressed", String(settings.morningMode));
-morningModeButton.textContent = settings.morningMode ? "通常モード" : "朝礼モード";
 
 function loadPeople() {
   const stored = localStorage.getItem(PEOPLE_STORAGE_KEY);
@@ -150,18 +143,6 @@ function loadCards() {
   }
 }
 
-function loadSettings() {
-  const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
-  if (!stored) return { morningMode: false };
-
-  try {
-    const parsed = JSON.parse(stored);
-    return { morningMode: parsed.morningMode === true };
-  } catch {
-    return { morningMode: false };
-  }
-}
-
 function normalizeCard(card) {
   return {
     ...card,
@@ -178,10 +159,6 @@ function savePeople() {
 
 function saveCards() {
   localStorage.setItem(CARDS_STORAGE_KEY, JSON.stringify(cards));
-}
-
-function saveSettings() {
-  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }
 
 function statusById(statusId) {
@@ -751,13 +728,6 @@ function resetSamplePeople() {
 }
 
 addButton.addEventListener("click", () => openCardDialog());
-morningModeButton.addEventListener("click", () => {
-  settings.morningMode = !settings.morningMode;
-  document.body.classList.toggle("morning-mode", settings.morningMode);
-  morningModeButton.setAttribute("aria-pressed", String(settings.morningMode));
-  morningModeButton.textContent = settings.morningMode ? "通常モード" : "朝礼モード";
-  saveSettings();
-});
 historyButton.addEventListener("click", () => {
   renderHistoryList();
   historyDialog.showModal();
