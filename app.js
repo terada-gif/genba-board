@@ -20,6 +20,7 @@ const CARDS_STORAGE_KEY = "morning-board-cards-v1";
 const PEOPLE_STORAGE_KEY = "morning-board-people-v1";
 const SETTINGS_STORAGE_KEY = "morning-board-settings-v1";
 const ALL_PEOPLE_TAB = "all";
+const HISTORY_DAYS = 30;
 
 const seedCards = [
   {
@@ -65,6 +66,7 @@ const seedCards = [
     work: "タイヤ交換",
     customer: "伊藤様",
     order: 0,
+    completedAt: new Date().toISOString(),
   },
 ];
 
@@ -76,7 +78,8 @@ const dialog = document.querySelector("#card-dialog");
 const form = document.querySelector("#card-form");
 const addButton = document.querySelector("#add-card-button");
 const membersButton = document.querySelector("#members-button");
-const showDoneInput = document.querySelector("#show-done-input");
+const morningModeButton = document.querySelector("#morning-mode-button");
+const historyButton = document.querySelector("#history-button");
 const closeButton = document.querySelector("#close-dialog-button");
 const completeButton = document.querySelector("#complete-card-button");
 const deleteButton = document.querySelector("#delete-card-button");
@@ -87,6 +90,10 @@ const closeMembersButton = document.querySelector("#close-members-button");
 const saveMembersButton = document.querySelector("#save-members-button");
 const addPersonButton = document.querySelector("#add-person-button");
 const seedPeopleButton = document.querySelector("#seed-people-button");
+const historyDialog = document.querySelector("#history-dialog");
+const historyList = document.querySelector("#history-list");
+const closeHistoryButton = document.querySelector("#close-history-button");
+const saveHistoryButton = document.querySelector("#save-history-button");
 
 const fields = {
   company: document.querySelector("#company-input"),
@@ -105,7 +112,9 @@ let editingCardId = null;
 let dragState = null;
 let activeMobileTab = ALL_PEOPLE_TAB;
 
-showDoneInput.checked = settings.showDone;
+document.body.classList.toggle("morning-mode", settings.morningMode);
+morningModeButton.setAttribute("aria-pressed", String(settings.morningMode));
+morningModeButton.textContent = settings.morningMode ? "通常モード" : "朝礼モード";
 
 function loadPeople() {
   const stored = localStorage.getItem(PEOPLE_STORAGE_KEY);
@@ -133,22 +142,34 @@ function loadCards() {
 
   try {
     const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : seedCards.map((card) => ({ ...card }));
+    return Array.isArray(parsed)
+      ? parsed.map(normalizeCard)
+      : seedCards.map((card) => normalizeCard({ ...card }));
   } catch {
-    return seedCards.map((card) => ({ ...card }));
+    return seedCards.map((card) => normalizeCard({ ...card }));
   }
 }
 
 function loadSettings() {
   const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
-  if (!stored) return { showDone: true };
+  if (!stored) return { morningMode: false };
 
   try {
     const parsed = JSON.parse(stored);
-    return { showDone: parsed.showDone !== false };
+    return { morningMode: parsed.morningMode === true };
   } catch {
-    return { showDone: true };
+    return { morningMode: false };
   }
+}
+
+function normalizeCard(card) {
+  return {
+    ...card,
+    completedAt:
+      card.status === "done"
+        ? card.completedAt || card.completed_at || new Date().toISOString()
+        : null,
+  };
 }
 
 function savePeople() {
@@ -181,10 +202,7 @@ function visiblePeople() {
 }
 
 function visibleCardsFor(personId) {
-  const personCards = sortedCardsFor(personId);
-  return settings.showDone
-    ? personCards
-    : personCards.filter((card) => card.status !== "done");
+  return sortedCardsFor(personId).filter((card) => card.status !== "done");
 }
 
 function sortedCardsFor(personId) {
@@ -227,6 +245,7 @@ function renderBoard() {
   renderMobileTabs();
   renderMobileList();
   renderMembersList();
+  renderHistoryList();
 }
 
 function desktopColumnCount(count) {
@@ -328,7 +347,7 @@ function createCardElement(card, options = {}) {
     </button>
     ${
       options.mobile && card.status !== "done"
-        ? '<button class="mobile-done-button" type="button">完了</button>'
+        ? '<button class="mobile-done-button" type="button" aria-label="完了にする">完了</button>'
         : ""
     }
   `;
@@ -419,6 +438,10 @@ function saveFormCard() {
     cards[index] = {
       ...previous,
       ...formCard,
+      completedAt:
+        formCard.status === "done"
+          ? previous.completedAt || new Date().toISOString()
+          : null,
       order:
         previous.assigneeId === formCard.assigneeId
           ? previous.order
@@ -428,6 +451,7 @@ function saveFormCard() {
     cards.push({
       id: crypto.randomUUID(),
       ...formCard,
+      completedAt: formCard.status === "done" ? new Date().toISOString() : null,
       order: nextOrderFor(formCard.assigneeId),
     });
   }
@@ -450,6 +474,18 @@ function markCardDone(cardId) {
   const card = cards.find((item) => item.id === cardId);
   if (!card) return;
   card.status = "done";
+  card.completedAt = new Date().toISOString();
+  saveCards();
+  renderBoard();
+}
+
+function restoreCard(cardId) {
+  const card = cards.find((item) => item.id === cardId);
+  if (!card) return;
+  card.status = "not-started";
+  card.completedAt = null;
+  card.order = nextOrderFor(card.assigneeId);
+  normalizeOrders();
   saveCards();
   renderBoard();
 }
@@ -592,6 +628,56 @@ function renderMembersList() {
     .join("");
 }
 
+function completedCardsInHistory() {
+  const cutoff = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
+  return cards
+    .filter((card) => {
+      if (card.status !== "done") return false;
+      const completedTime = new Date(card.completedAt || 0).getTime();
+      return Number.isFinite(completedTime) && completedTime >= cutoff;
+    })
+    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+}
+
+function renderHistoryList() {
+  const completedCards = completedCardsInHistory();
+  historyList.innerHTML = "";
+
+  if (completedCards.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "直近30日の完了履歴はありません";
+    historyList.appendChild(empty);
+    return;
+  }
+
+  completedCards.forEach((card) => {
+    const row = document.createElement("div");
+    row.className = "history-row";
+    row.dataset.cardId = card.id;
+    row.innerHTML = `
+      <div class="history-card-text">
+        <strong>${escapeHtml(card.company)}</strong>
+        <span>${escapeHtml(card.plate)} ${escapeHtml(card.car)} / ${escapeHtml(card.work)}</span>
+        <span>${escapeHtml(personById(card.assigneeId).name)} / ${formatDateTime(card.completedAt)}</span>
+      </div>
+      <button class="secondary-button restore-card-button" type="button">戻す</button>
+    `;
+    historyList.appendChild(row);
+  });
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function updatePerson(personId, changes) {
   const person = people.find((item) => item.id === personId);
   if (!person) return;
@@ -665,6 +751,17 @@ function resetSamplePeople() {
 }
 
 addButton.addEventListener("click", () => openCardDialog());
+morningModeButton.addEventListener("click", () => {
+  settings.morningMode = !settings.morningMode;
+  document.body.classList.toggle("morning-mode", settings.morningMode);
+  morningModeButton.setAttribute("aria-pressed", String(settings.morningMode));
+  morningModeButton.textContent = settings.morningMode ? "通常モード" : "朝礼モード";
+  saveSettings();
+});
+historyButton.addEventListener("click", () => {
+  renderHistoryList();
+  historyDialog.showModal();
+});
 membersButton.addEventListener("click", () => {
   renderMembersList();
   membersDialog.showModal();
@@ -672,14 +769,10 @@ membersButton.addEventListener("click", () => {
 closeButton.addEventListener("click", closeDialog);
 closeMembersButton.addEventListener("click", () => membersDialog.close());
 saveMembersButton.addEventListener("click", () => membersDialog.close());
+closeHistoryButton.addEventListener("click", () => historyDialog.close());
+saveHistoryButton.addEventListener("click", () => historyDialog.close());
 addPersonButton.addEventListener("click", addPerson);
 seedPeopleButton.addEventListener("click", resetSamplePeople);
-
-showDoneInput.addEventListener("change", () => {
-  settings.showDone = showDoneInput.checked;
-  saveSettings();
-  renderBoard();
-});
 
 mobileTabs.addEventListener("click", (event) => {
   const tab = event.target.closest(".mobile-tab");
@@ -715,6 +808,12 @@ membersList.addEventListener("click", (event) => {
   if (event.target.classList.contains("delete-person-button")) deletePerson(personId);
 });
 
+historyList.addEventListener("click", (event) => {
+  const row = event.target.closest(".history-row");
+  if (!row || !event.target.classList.contains("restore-card-button")) return;
+  restoreCard(row.dataset.cardId);
+});
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   saveFormCard();
@@ -739,6 +838,10 @@ dialog.addEventListener("click", (event) => {
 
 membersDialog.addEventListener("click", (event) => {
   if (event.target === membersDialog) membersDialog.close();
+});
+
+historyDialog.addEventListener("click", (event) => {
+  if (event.target === historyDialog) historyDialog.close();
 });
 
 populateSelects();

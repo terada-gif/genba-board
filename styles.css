@@ -55,7 +55,7 @@ select {
 
 .topbar h1 {
   margin: 0;
-  font-size: clamp(22px, 3vw, 30px);
+  font-size: clamp(22px, 3vw, 31px);
   line-height: 1.2;
   letter-spacing: 0;
 }
@@ -159,6 +159,33 @@ button:hover {
   font-weight: 900;
 }
 
+.morning-mode .operation-control {
+  display: none;
+}
+
+.morning-mode .topbar {
+  min-height: 86px;
+  padding: 16px 24px;
+}
+
+.morning-mode .topbar h1 {
+  font-size: clamp(30px, 4vw, 46px);
+}
+
+.morning-mode .topbar p {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.morning-mode #morning-mode-button {
+  min-height: 48px;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+}
+
 .complete-drop-zone span {
   color: #50705b;
   font-size: 13px;
@@ -179,6 +206,15 @@ button:hover {
   min-width: 0;
   min-height: calc(100vh - 178px);
   align-items: stretch;
+}
+
+.morning-mode .board-shell {
+  padding: 18px 22px 22px;
+}
+
+.morning-mode .board {
+  gap: 18px;
+  min-height: calc(100vh - 126px);
 }
 
 .person-column {
@@ -208,6 +244,14 @@ button:hover {
   letter-spacing: 0;
 }
 
+.morning-mode .column-head {
+  padding: 18px 18px 16px;
+}
+
+.morning-mode .column-head h2 {
+  font-size: clamp(27px, 2.5vw, 36px);
+}
+
 .count-badge {
   min-width: 46px;
   height: 34px;
@@ -218,6 +262,12 @@ button:hover {
   color: #141819;
   font-size: 18px;
   font-weight: 900;
+}
+
+.morning-mode .count-badge {
+  min-width: 58px;
+  height: 44px;
+  font-size: 24px;
 }
 
 .card-list {
@@ -243,6 +293,40 @@ button:hover {
   text-align: left;
   touch-action: pan-x;
   user-select: none;
+}
+
+.morning-mode .card-list {
+  gap: 14px;
+  padding: 16px;
+}
+
+.morning-mode .work-card {
+  grid-template-columns: 12px 1fr;
+  min-height: 168px;
+}
+
+.morning-mode .card-body {
+  gap: 9px;
+  padding: 15px 18px;
+}
+
+.morning-mode .status-chip {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 15px;
+}
+
+.morning-mode .company-line {
+  font-size: clamp(22px, 2vw, 28px);
+}
+
+.morning-mode .vehicle-line {
+  font-size: clamp(20px, 1.8vw, 25px);
+}
+
+.morning-mode .work-line,
+.morning-mode .customer-line {
+  font-size: clamp(18px, 1.6vw, 22px);
 }
 
 .work-card.is-done {
@@ -361,7 +445,8 @@ button:hover {
   box-shadow: 0 24px 60px rgba(20, 24, 26, 0.32);
 }
 
-.members-dialog {
+.members-dialog,
+.history-dialog {
   width: min(820px, calc(100vw - 28px));
   border: 0;
   border-radius: 8px;
@@ -369,11 +454,13 @@ button:hover {
   box-shadow: 0 24px 60px rgba(20, 24, 26, 0.32);
 }
 
-.members-dialog::backdrop {
+.members-dialog::backdrop,
+.history-dialog::backdrop {
   background: rgba(31, 37, 40, 0.35);
 }
 
-.members-dialog form {
+.members-dialog form,
+.history-dialog form {
   padding: 18px;
 }
 
@@ -419,6 +506,49 @@ button:hover {
   max-height: min(58vh, 520px);
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(58vh, 520px);
+  overflow-y: auto;
+  margin: 16px 0;
+  padding-right: 4px;
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #d0c8b9;
+  border-radius: 6px;
+  padding: 10px;
+  background: #fffef8;
+}
+
+.history-card-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.history-card-text strong,
+.history-card-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-card-text strong {
+  font-size: 16px;
+}
+
+.history-card-text span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .member-row {
@@ -507,8 +637,8 @@ select {
   }
 
   .topbar h1 {
-    max-width: 160px;
-    font-size: 19px;
+    max-width: 170px;
+    font-size: 18px;
   }
 
   .topbar p {
@@ -537,6 +667,17 @@ select {
     padding: 0;
   }
 
+  #history-button {
+    font-size: 0;
+    width: 42px;
+    padding: 0;
+  }
+
+  #history-button::before {
+    content: "履歴";
+    font-size: 13px;
+  }
+
   #members-button::before {
     content: "設定";
     font-size: 13px;
@@ -559,9 +700,9 @@ select {
     position: sticky;
     top: 0;
     z-index: 8;
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
     gap: 8px;
-    overflow-x: auto;
     padding: 10px 12px;
     border-bottom: 1px solid var(--line);
     background: rgba(247, 247, 241, 0.96);
@@ -569,13 +710,14 @@ select {
   }
 
   .mobile-tab {
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
-    min-height: 38px;
+    min-height: 42px;
     border: 1px solid #b8b0a3;
     border-radius: 999px;
-    padding: 0 12px;
+    padding: 0 10px;
     background: #fffef8;
     color: var(--ink);
     white-space: nowrap;
@@ -605,7 +747,7 @@ select {
 
   .mobile-list {
     display: grid;
-    gap: 10px;
+    gap: 12px;
   }
 
   .mobile-card-row {
@@ -623,27 +765,27 @@ select {
     padding: 2px 10px;
     background: #fafaf4;
     color: #30383c;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 800;
   }
 
   .mobile-list .work-card {
     grid-template-columns: 9px 1fr auto;
-    min-height: 132px;
+    min-height: 142px;
     touch-action: pan-y;
   }
 
   .mobile-done-button {
     align-self: start;
-    min-width: 58px;
-    min-height: 34px;
-    margin: 10px 10px 0 0;
+    min-width: 68px;
+    min-height: 44px;
+    margin: 12px 12px 0 0;
     border: 1px solid rgba(47, 125, 86, 0.45);
     border-radius: 999px;
     background: #edf6ef;
     color: #245a3c;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 900;
   }
 
@@ -668,7 +810,8 @@ select {
   }
 
   .members-dialog form,
-  .card-dialog form {
+  .card-dialog form,
+  .history-dialog form {
     padding: 14px;
   }
 
@@ -682,5 +825,21 @@ select {
 
   .delete-person-button {
     grid-column: 3 / 5;
+  }
+
+  .history-row {
+    grid-template-columns: 1fr;
+  }
+
+  .restore-card-button {
+    min-height: 42px;
+  }
+
+  .morning-mode .topbar {
+    min-height: 72px;
+  }
+
+  .morning-mode .topbar h1 {
+    font-size: 21px;
   }
 }
