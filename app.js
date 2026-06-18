@@ -93,13 +93,17 @@ const historyDialog = document.querySelector("#history-dialog");
 const historyList = document.querySelector("#history-list");
 const closeHistoryButton = document.querySelector("#close-history-button");
 const saveHistoryButton = document.querySelector("#save-history-button");
-const photoAddButton = document.querySelector("#photo-add-button");
-const photoInput = document.querySelector("#photo-input");
-const photoDialog = document.querySelector("#photo-dialog");
-const photoPreview = document.querySelector("#photo-preview");
-const closePhotoButton = document.querySelector("#close-photo-button");
-const closePhotoConfirmButton = document.querySelector("#close-photo-confirm-button");
-const choosePhotoAgainButton = document.querySelector("#choose-photo-again-button");
+const imageDropZone = document.querySelector("#image-drop-zone");
+const imageEmptyState = document.querySelector("#image-empty-state");
+const imagePreviewState = document.querySelector("#image-preview-state");
+const imageThumbnail = document.querySelector("#image-thumbnail");
+const imagePreviewButton = document.querySelector("#image-preview-button");
+const removeImageButton = document.querySelector("#remove-image-button");
+const cameraInput = document.querySelector("#camera-input");
+const galleryInput = document.querySelector("#gallery-input");
+const imageLightbox = document.querySelector("#image-lightbox");
+const lightboxImage = document.querySelector("#lightbox-image");
+const closeLightboxButton = document.querySelector("#close-lightbox-button");
 const companySuggestions = document.querySelector("#company-suggestions");
 const customerSuggestions = document.querySelector("#customer-suggestions");
 
@@ -119,7 +123,7 @@ let editingCardId = null;
 let dragState = null;
 let activeMobileTab = ALL_PEOPLE_TAB;
 let suggestions = loadSuggestions();
-let photoPreviewUrl = null;
+let pendingImageData = null;
 
 function loadPeople() {
   const stored = localStorage.getItem(PEOPLE_STORAGE_KEY);
@@ -158,6 +162,7 @@ function loadCards() {
 function normalizeCard(card) {
   return {
     ...card,
+    imageData: card.imageData || null,
     completedAt:
       card.status === "done"
         ? card.completedAt || card.completed_at || new Date().toISOString()
@@ -363,7 +368,10 @@ function createCardElement(card, options = {}) {
     <span class="status-rail status-${card.status}"></span>
     <button class="card-main" type="button">
       <span class="card-body">
-        <span class="status-chip status-${card.status}">${status.label}</span>
+        <span class="card-meta-row">
+          <span class="status-chip status-${card.status}">${status.label}</span>
+          ${card.imageData ? '<span class="image-indicator" title="画像あり">📷 画像あり</span>' : ""}
+        </span>
         <span class="card-line company-line">${escapeHtml(card.company)}</span>
         <span class="card-line vehicle-line">${escapeHtml(card.plate)} ${escapeHtml(card.car)}</span>
         <span class="card-line work-line">${escapeHtml(card.work)}</span>
@@ -428,6 +436,8 @@ function openCardDialog(cardId = null, preset = null) {
     source?.assigneeId ||
     (activeMobileTab !== ALL_PEOPLE_TAB ? activeMobileTab : visiblePeople()[0]?.id || people[0]?.id);
   fields.status.value = card ? card.status : STATUSES[0].id;
+  pendingImageData = source?.imageData || null;
+  updateImagePreview();
 
   dialog.showModal();
   fields.company.focus();
@@ -437,6 +447,8 @@ function closeDialog() {
   dialog.close();
   form.reset();
   editingCardId = null;
+  pendingImageData = null;
+  updateImagePreview();
 }
 
 function collectFormCard() {
@@ -448,6 +460,7 @@ function collectFormCard() {
     customer: fields.customer.value.trim(),
     assigneeId: fields.assignee.value,
     status: fields.status.value,
+    imageData: pendingImageData,
   };
 }
 
@@ -796,14 +809,26 @@ closeHistoryButton.addEventListener("click", () => historyDialog.close());
 saveHistoryButton.addEventListener("click", () => historyDialog.close());
 addPersonButton.addEventListener("click", addPerson);
 seedPeopleButton.addEventListener("click", resetSamplePeople);
-photoAddButton.addEventListener("click", () => photoInput.click());
-photoInput.addEventListener("change", () => importFromImage(photoInput.files[0]));
-choosePhotoAgainButton.addEventListener("click", () => {
-  photoInput.value = "";
-  photoInput.click();
+cameraInput.addEventListener("change", () => importFromImage(cameraInput.files[0]));
+galleryInput.addEventListener("change", () => importFromImage(galleryInput.files[0]));
+removeImageButton.addEventListener("click", removeFormImage);
+imagePreviewButton.addEventListener("click", openImageLightbox);
+closeLightboxButton.addEventListener("click", () => imageLightbox.close());
+
+imageDropZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  if (!pendingImageData) imageDropZone.classList.add("is-dragging");
 });
-closePhotoButton.addEventListener("click", closePhotoDialog);
-closePhotoConfirmButton.addEventListener("click", closePhotoDialog);
+
+imageDropZone.addEventListener("dragleave", () => {
+  imageDropZone.classList.remove("is-dragging");
+});
+
+imageDropZone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  imageDropZone.classList.remove("is-dragging");
+  importFromImage(event.dataTransfer.files[0]);
+});
 
 mobileTabs.addEventListener("click", (event) => {
   const tab = event.target.closest(".mobile-tab");
@@ -853,20 +878,76 @@ historyList.addEventListener("click", (event) => {
   }
 });
 
-function importFromImage(file) {
+async function importFromImage(file) {
   if (!file || !file.type.startsWith("image/")) return;
-  if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
-  photoPreviewUrl = URL.createObjectURL(file);
-  photoPreview.src = photoPreviewUrl;
-  photoDialog.showModal();
+  try {
+    pendingImageData = await processImageFile(file);
+    updateImagePreview();
+  } catch {
+    alert("画像を読み込めませんでした。別の画像を選択してください。");
+  } finally {
+    cameraInput.value = "";
+    galleryInput.value = "";
+  }
 }
 
-function closePhotoDialog() {
-  photoDialog.close();
-  photoInput.value = "";
-  photoPreview.removeAttribute("src");
-  if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
-  photoPreviewUrl = null;
+async function processImageFile(file) {
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const maxDimension = 1600;
+  const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+
+  if (scale === 1 && file.size <= 500_000) return dataUrl;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(image.naturalWidth * scale);
+  canvas.height = Math.round(image.naturalHeight * scale);
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(source) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = source;
+  });
+}
+
+function updateImagePreview() {
+  imageEmptyState.hidden = Boolean(pendingImageData);
+  imagePreviewState.hidden = !pendingImageData;
+  if (pendingImageData) {
+    imageThumbnail.src = pendingImageData;
+  } else {
+    imageThumbnail.removeAttribute("src");
+  }
+}
+
+function removeFormImage() {
+  pendingImageData = null;
+  cameraInput.value = "";
+  galleryInput.value = "";
+  updateImagePreview();
+}
+
+function openImageLightbox() {
+  if (!pendingImageData) return;
+  lightboxImage.src = pendingImageData;
+  imageLightbox.showModal();
 }
 
 form.addEventListener("submit", (event) => {
@@ -899,8 +980,8 @@ historyDialog.addEventListener("click", (event) => {
   if (event.target === historyDialog) historyDialog.close();
 });
 
-photoDialog.addEventListener("click", (event) => {
-  if (event.target === photoDialog) closePhotoDialog();
+imageLightbox.addEventListener("click", (event) => {
+  if (event.target === imageLightbox) imageLightbox.close();
 });
 
 populateSelects();

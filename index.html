@@ -18,7 +18,6 @@
           <button id="members-button" class="secondary-button" type="button">メンバー設定</button>
         </div>
         <div class="topbar-add-actions">
-          <button id="photo-add-button" class="secondary-button" type="button">写真から追加</button>
           <button id="add-card-button" class="primary-button" type="button">＋ 案件追加</button>
         </div>
       </div>
@@ -41,6 +40,35 @@
           <h2 id="dialog-title">案件カード</h2>
           <button class="icon-button" type="button" id="close-dialog-button" aria-label="閉じる">×</button>
         </div>
+
+        <section class="image-import" aria-labelledby="image-import-title">
+          <div id="image-drop-zone" class="image-drop-zone">
+            <div id="image-empty-state" class="image-empty-state">
+              <strong id="image-import-title">写真から読み込み</strong>
+              <span class="drop-hint">画像をここにドラッグ＆ドロップ</span>
+              <div class="image-input-actions">
+                <label class="secondary-button camera-input-button" for="camera-input">写真を撮る</label>
+                <label class="secondary-button gallery-input-button" for="gallery-input">
+                  <span class="desktop-label">ファイルを選択</span>
+                  <span class="mobile-label">写真を選択</span>
+                </label>
+              </div>
+            </div>
+            <div id="image-preview-state" class="image-preview-state" hidden>
+              <button id="image-preview-button" class="image-preview-button" type="button" aria-label="画像を拡大表示">
+                <img id="image-thumbnail" alt="案件写真のプレビュー" />
+              </button>
+              <div class="image-preview-info">
+                <strong>案件写真</strong>
+                <span>画像を押すと拡大できます</span>
+                <button id="remove-image-button" class="danger-button" type="button">画像を削除</button>
+              </div>
+            </div>
+          </div>
+          <input id="camera-input" class="visually-hidden" type="file" accept="image/*" capture="environment" />
+          <input id="gallery-input" class="visually-hidden" type="file" accept="image/*" />
+          <p class="image-import-note">読み取り機能は次バージョンで対応予定</p>
+        </section>
 
         <div class="form-grid">
           <label>
@@ -85,23 +113,9 @@
       </form>
     </dialog>
 
-    <input id="photo-input" class="visually-hidden" type="file" accept="image/*" capture="environment" />
-
-    <dialog id="photo-dialog" class="photo-dialog">
-      <form method="dialog">
-        <div class="dialog-head">
-          <h2>写真から追加</h2>
-          <button class="icon-button" type="button" id="close-photo-button" aria-label="閉じる">×</button>
-        </div>
-        <div class="photo-preview-wrap">
-          <img id="photo-preview" alt="選択した写真のプレビュー" />
-        </div>
-        <p class="photo-notice">読み取り機能は次バージョンで対応予定</p>
-        <div class="dialog-actions photo-dialog-actions">
-          <button id="choose-photo-again-button" class="secondary-button" type="button">写真を選び直す</button>
-          <button id="close-photo-confirm-button" class="primary-button" type="button">閉じる</button>
-        </div>
-      </form>
+    <dialog id="image-lightbox" class="image-lightbox">
+      <button class="icon-button lightbox-close-button" type="button" id="close-lightbox-button" aria-label="閉じる">×</button>
+      <img id="lightbox-image" alt="案件写真の拡大表示" />
     </dialog>
 
     <dialog id="history-dialog" class="history-dialog">
