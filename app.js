@@ -104,6 +104,12 @@ const galleryInput = document.querySelector("#gallery-input");
 const imageLightbox = document.querySelector("#image-lightbox");
 const lightboxImage = document.querySelector("#lightbox-image");
 const closeLightboxButton = document.querySelector("#close-lightbox-button");
+const ocrButton = document.querySelector("#ocr-button");
+const ocrLoading = document.querySelector("#ocr-loading");
+const ocrProgressText = document.querySelector("#ocr-progress-text");
+const ocrResultPanel = document.querySelector("#ocr-result-panel");
+const ocrResult = document.querySelector("#ocr-result");
+const ocrResultNote = document.querySelector("#ocr-result-note");
 const companySuggestions = document.querySelector("#company-suggestions");
 const customerSuggestions = document.querySelector("#customer-suggestions");
 
@@ -124,6 +130,9 @@ let dragState = null;
 let activeMobileTab = ALL_PEOPLE_TAB;
 let suggestions = loadSuggestions();
 let pendingImageData = null;
+let ocrWorker = null;
+let isOcrRunning = false;
+let ocrRequestId = 0;
 
 function loadPeople() {
   const stored = localStorage.getItem(PEOPLE_STORAGE_KEY);
@@ -438,6 +447,7 @@ function openCardDialog(cardId = null, preset = null) {
   fields.status.value = card ? card.status : STATUSES[0].id;
   pendingImageData = source?.imageData || null;
   updateImagePreview();
+  resetOcrResult();
 
   dialog.showModal();
   fields.company.focus();
@@ -449,6 +459,7 @@ function closeDialog() {
   editingCardId = null;
   pendingImageData = null;
   updateImagePreview();
+  resetOcrResult();
 }
 
 function collectFormCard() {
@@ -814,6 +825,11 @@ galleryInput.addEventListener("change", () => importFromImage(galleryInput.files
 removeImageButton.addEventListener("click", removeFormImage);
 imagePreviewButton.addEventListener("click", openImageLightbox);
 closeLightboxButton.addEventListener("click", () => imageLightbox.close());
+ocrButton.addEventListener("click", runOcr);
+
+Object.values(fields).forEach((field) => {
+  field.addEventListener("input", () => field.classList.remove("is-ocr-filled"));
+});
 
 imageDropZone.addEventListener("dragover", (event) => {
   event.preventDefault();
@@ -883,12 +899,153 @@ async function importFromImage(file) {
   try {
     pendingImageData = await processImageFile(file);
     updateImagePreview();
+    resetOcrResult();
   } catch {
     alert("画像を読み込めませんでした。別の画像を選択してください。");
   } finally {
     cameraInput.value = "";
     galleryInput.value = "";
   }
+}
+
+async function runOcr() {
+  if (!pendingImageData || isOcrRunning) return;
+  const requestId = ++ocrRequestId;
+  isOcrRunning = true;
+  ocrButton.disabled = true;
+  ocrLoading.hidden = false;
+  ocrProgressText.textContent = "読み取り準備中...";
+
+  try {
+    const worker = await getOcrWorker();
+    const result = await worker.recognize(pendingImageData);
+    if (requestId !== ocrRequestId || !dialog.open) return;
+    const text = result.data.text.trim();
+    ocrResult.value = text;
+    ocrResultPanel.hidden = false;
+
+    const candidates = extractCardCandidates(text);
+    const appliedCount = applyOcrCandidates(candidates);
+    ocrResultNote.textContent = appliedCount
+      ? `${appliedCount}項目の候補を反映しました。内容を確認し、必要に応じて修正してください。`
+      : "フォームへ反映できる候補は見つかりませんでした。OCR結果を見ながら入力してください。";
+  } catch {
+    if (requestId === ocrRequestId && dialog.open) {
+      alert("文字を読み取れませんでした。通信環境や画像を確認して、もう一度お試しください。");
+    }
+  } finally {
+    isOcrRunning = false;
+    ocrLoading.hidden = true;
+    ocrButton.disabled = !pendingImageData;
+  }
+}
+
+async function getOcrWorker() {
+  if (!window.Tesseract) throw new Error("Tesseract.js is unavailable");
+  if (!ocrWorker) {
+    ocrWorker = await window.Tesseract.createWorker(["jpn", "eng"], 1, {
+      logger: updateOcrProgress,
+    });
+  }
+  return ocrWorker;
+}
+
+function updateOcrProgress(message) {
+  const labels = {
+    "loading tesseract core": "OCRエンジンを準備中",
+    "initializing tesseract": "OCRエンジンを初期化中",
+    "loading language traineddata": "日本語データを読み込み中",
+    "initializing api": "文字認識を準備中",
+    "recognizing text": "文字を読み取り中",
+  };
+  const label = labels[message.status] || "読み取り準備中";
+  const progress = Number.isFinite(message.progress)
+    ? ` ${Math.round(message.progress * 100)}%`
+    : "";
+  ocrProgressText.textContent = `${label}${progress}`;
+}
+
+function extractCardCandidates(rawText) {
+  const text = toHalfWidthDigits(rawText).replaceAll("\r", "");
+  const lines = text
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const company =
+    findLabeledValue(lines, ["社名", "会社名", "法人名"]) ||
+    lines.find((line) => /(株式会社|有限会社|合同会社|商店|運送|設備|工業|自動車)/.test(line));
+  const plateSource = findLabeledValue(lines, ["ナンバー下4桁", "ナンバー", "登録番号", "車両番号"]);
+  const labeledPlate = lastFourDigits(plateSource);
+  const fallbackPlateLine = lines.find((line) => /(ナンバー|登録番号|車両番号)/.test(line));
+  const plate =
+    labeledPlate ||
+    lastFourDigits(fallbackPlateLine) ||
+    lines.map(lastFourDigits).find(Boolean) ||
+    "";
+  const car = findLabeledValue(lines, ["車名", "車種", "車両名"]);
+  const work =
+    findLabeledValue(lines, ["作業内容", "整備内容", "ご用命", "作業"]) ||
+    lines.find((line) => /(車検|点検|交換|修理|整備|オイル|タイヤ|板金|塗装)/.test(line));
+  const customer =
+    findLabeledValue(lines, ["顧客名", "お客様名", "氏名", "お名前"]) ||
+    lines.find((line) => /様$/.test(line));
+
+  return {
+    company: cleanCandidate(company),
+    plate,
+    car: cleanCandidate(car),
+    work: cleanCandidate(work),
+    customer: cleanCandidate(customer),
+  };
+}
+
+function findLabeledValue(lines, labels) {
+  for (const line of lines) {
+    for (const label of labels) {
+      const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const match = line.match(new RegExp(`^${escapedLabel}\\s*[:：]?\\s*(.+)$`));
+      if (match?.[1]) return match[1];
+    }
+  }
+  return "";
+}
+
+function lastFourDigits(value = "") {
+  const digits = String(value).replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : "";
+}
+
+function toHalfWidthDigits(value) {
+  return String(value).replace(/[０-９]/g, (digit) =>
+    String.fromCharCode(digit.charCodeAt(0) - 0xfee0),
+  );
+}
+
+function cleanCandidate(value = "") {
+  return String(value).replace(/^[\s:：・-]+|[\s:：・-]+$/g, "").trim();
+}
+
+function applyOcrCandidates(candidates) {
+  let appliedCount = 0;
+  ["company", "plate", "car", "work", "customer"].forEach((key) => {
+    if (!candidates[key] || fields[key].value.trim()) return;
+    fields[key].value = candidates[key];
+    fields[key].classList.add("is-ocr-filled");
+    appliedCount += 1;
+  });
+  return appliedCount;
+}
+
+function resetOcrResult() {
+  ocrRequestId += 1;
+  ocrResult.value = "";
+  ocrResultPanel.hidden = true;
+  ocrLoading.hidden = true;
+  ocrButton.disabled = !pendingImageData || isOcrRunning;
+  ["company", "plate", "car", "work", "customer"].forEach((key) => {
+    fields[key].classList.remove("is-ocr-filled");
+  });
 }
 
 async function processImageFile(file) {
@@ -930,6 +1087,7 @@ function loadImage(source) {
 function updateImagePreview() {
   imageEmptyState.hidden = Boolean(pendingImageData);
   imagePreviewState.hidden = !pendingImageData;
+  ocrButton.disabled = !pendingImageData || isOcrRunning;
   if (pendingImageData) {
     imageThumbnail.src = pendingImageData;
   } else {
@@ -942,6 +1100,7 @@ function removeFormImage() {
   cameraInput.value = "";
   galleryInput.value = "";
   updateImagePreview();
+  resetOcrResult();
 }
 
 function openImageLightbox() {

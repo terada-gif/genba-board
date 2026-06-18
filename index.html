@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>デジタル朝礼ボード v0.5</title>
-    <link rel="stylesheet" href="./styles.css?v=0.5" />
+    <title>デジタル朝礼ボード v0.6</title>
+    <link rel="stylesheet" href="./styles.css?v=0.6" />
   </head>
   <body>
     <header class="topbar">
       <div>
-        <h1>デジタル朝礼ボード v0.5</h1>
-        <p>整備工場 作業カード v0.5</p>
+        <h1>デジタル朝礼ボード v0.6</h1>
+        <p>整備工場 作業カード v0.6</p>
       </div>
       <div class="topbar-actions">
         <div class="topbar-management-actions">
@@ -67,7 +67,18 @@
           </div>
           <input id="camera-input" class="visually-hidden" type="file" accept="image/*" capture="environment" />
           <input id="gallery-input" class="visually-hidden" type="file" accept="image/*" />
-          <p class="image-import-note">読み取り機能は次バージョンで対応予定</p>
+          <div class="ocr-control-row">
+            <button id="ocr-button" class="secondary-button" type="button" disabled>文字を読み取る</button>
+            <div id="ocr-loading" class="ocr-loading" role="status" aria-live="polite" hidden>
+              <span class="loading-spinner" aria-hidden="true"></span>
+              <span id="ocr-progress-text">読み取り準備中...</span>
+            </div>
+          </div>
+          <div id="ocr-result-panel" class="ocr-result-panel" hidden>
+            <label for="ocr-result">OCR結果（全文）</label>
+            <textarea id="ocr-result" rows="6" readonly></textarea>
+            <p id="ocr-result-note">候補をフォームへ反映しました。内容を確認し、必要に応じて修正してください。</p>
+          </div>
         </section>
 
         <div class="form-grid">
@@ -155,6 +166,10 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=0.5"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"
+      onerror="this.onerror=null;this.src='https://unpkg.com/tesseract.js@7/dist/tesseract.min.js'"
+    ></script>
+    <script src="./app.js?v=0.6"></script>
   </body>
 </html>
