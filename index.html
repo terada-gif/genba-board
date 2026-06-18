@@ -3,19 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>デジタル朝礼ボード v0.4</title>
-    <link rel="stylesheet" href="./styles.css?v=0.4" />
+    <title>デジタル朝礼ボード v0.5</title>
+    <link rel="stylesheet" href="./styles.css?v=0.5" />
   </head>
   <body>
     <header class="topbar">
       <div>
-        <h1>デジタル朝礼ボード v0.4</h1>
-        <p>整備工場 作業カード v0.4</p>
+        <h1>デジタル朝礼ボード v0.5</h1>
+        <p>整備工場 作業カード v0.5</p>
       </div>
       <div class="topbar-actions">
-        <button id="history-button" class="secondary-button" type="button">完了履歴</button>
-        <button id="members-button" class="secondary-button" type="button">メンバー設定</button>
-        <button id="add-card-button" class="primary-button" type="button">＋ 案件追加</button>
+        <div class="topbar-management-actions">
+          <button id="history-button" class="secondary-button" type="button">完了履歴</button>
+          <button id="members-button" class="secondary-button" type="button">メンバー設定</button>
+        </div>
+        <div class="topbar-add-actions">
+          <button id="photo-add-button" class="secondary-button" type="button">写真から追加</button>
+          <button id="add-card-button" class="primary-button" type="button">＋ 案件追加</button>
+        </div>
       </div>
     </header>
 
@@ -40,7 +45,8 @@
         <div class="form-grid">
           <label>
             社名
-            <input id="company-input" name="company" autocomplete="organization" required />
+            <input id="company-input" name="company" list="company-suggestions" autocomplete="organization" required />
+            <datalist id="company-suggestions"></datalist>
           </label>
           <label>
             ナンバー下4桁
@@ -56,7 +62,8 @@
           </label>
           <label>
             顧客名
-            <input id="customer-input" name="customer" autocomplete="name" required />
+            <input id="customer-input" name="customer" list="customer-suggestions" autocomplete="name" required />
+            <datalist id="customer-suggestions"></datalist>
           </label>
           <label>
             担当者
@@ -74,6 +81,25 @@
             <button class="secondary-button" type="button" id="complete-card-button">完了にする</button>
             <button class="primary-button" type="submit">保存</button>
           </div>
+        </div>
+      </form>
+    </dialog>
+
+    <input id="photo-input" class="visually-hidden" type="file" accept="image/*" capture="environment" />
+
+    <dialog id="photo-dialog" class="photo-dialog">
+      <form method="dialog">
+        <div class="dialog-head">
+          <h2>写真から追加</h2>
+          <button class="icon-button" type="button" id="close-photo-button" aria-label="閉じる">×</button>
+        </div>
+        <div class="photo-preview-wrap">
+          <img id="photo-preview" alt="選択した写真のプレビュー" />
+        </div>
+        <p class="photo-notice">読み取り機能は次バージョンで対応予定</p>
+        <div class="dialog-actions photo-dialog-actions">
+          <button id="choose-photo-again-button" class="secondary-button" type="button">写真を選び直す</button>
+          <button id="close-photo-confirm-button" class="primary-button" type="button">閉じる</button>
         </div>
       </form>
     </dialog>
@@ -115,6 +141,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=0.4"></script>
+    <script src="./app.js?v=0.5"></script>
   </body>
 </html>

@@ -18,6 +18,7 @@ const STATUSES = [
 
 const CARDS_STORAGE_KEY = "morning-board-cards-v1";
 const PEOPLE_STORAGE_KEY = "morning-board-people-v1";
+const SUGGESTIONS_STORAGE_KEY = "morning-board-suggestions-v1";
 const ALL_PEOPLE_TAB = "all";
 const HISTORY_DAYS = 30;
 
@@ -92,6 +93,15 @@ const historyDialog = document.querySelector("#history-dialog");
 const historyList = document.querySelector("#history-list");
 const closeHistoryButton = document.querySelector("#close-history-button");
 const saveHistoryButton = document.querySelector("#save-history-button");
+const photoAddButton = document.querySelector("#photo-add-button");
+const photoInput = document.querySelector("#photo-input");
+const photoDialog = document.querySelector("#photo-dialog");
+const photoPreview = document.querySelector("#photo-preview");
+const closePhotoButton = document.querySelector("#close-photo-button");
+const closePhotoConfirmButton = document.querySelector("#close-photo-confirm-button");
+const choosePhotoAgainButton = document.querySelector("#choose-photo-again-button");
+const companySuggestions = document.querySelector("#company-suggestions");
+const customerSuggestions = document.querySelector("#customer-suggestions");
 
 const fields = {
   company: document.querySelector("#company-input"),
@@ -108,6 +118,8 @@ let cards = loadCards();
 let editingCardId = null;
 let dragState = null;
 let activeMobileTab = ALL_PEOPLE_TAB;
+let suggestions = loadSuggestions();
+let photoPreviewUrl = null;
 
 function loadPeople() {
   const stored = localStorage.getItem(PEOPLE_STORAGE_KEY);
@@ -159,6 +171,42 @@ function savePeople() {
 
 function saveCards() {
   localStorage.setItem(CARDS_STORAGE_KEY, JSON.stringify(cards));
+}
+
+function loadSuggestions() {
+  const cardValues = (field) => cards.map((card) => card[field]);
+  try {
+    const stored = JSON.parse(localStorage.getItem(SUGGESTIONS_STORAGE_KEY) || "{}");
+    return {
+      companies: uniqueSuggestions([...(stored.companies || []), ...cardValues("company")]),
+      customers: uniqueSuggestions([...(stored.customers || []), ...cardValues("customer")]),
+    };
+  } catch {
+    return {
+      companies: uniqueSuggestions(cardValues("company")),
+      customers: uniqueSuggestions(cardValues("customer")),
+    };
+  }
+}
+
+function uniqueSuggestions(values) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function rememberSuggestions(card) {
+  suggestions.companies = uniqueSuggestions([...suggestions.companies, card.company]);
+  suggestions.customers = uniqueSuggestions([...suggestions.customers, card.customer]);
+  localStorage.setItem(SUGGESTIONS_STORAGE_KEY, JSON.stringify(suggestions));
+  renderSuggestions();
+}
+
+function renderSuggestions() {
+  companySuggestions.innerHTML = suggestions.companies
+    .map((value) => `<option value="${escapeHtml(value)}"></option>`)
+    .join("");
+  customerSuggestions.innerHTML = suggestions.customers
+    .map((value) => `<option value="${escapeHtml(value)}"></option>`)
+    .join("");
 }
 
 function statusById(statusId) {
@@ -363,22 +411,23 @@ function populateSelects() {
   ).join("");
 }
 
-function openCardDialog(cardId = null) {
+function openCardDialog(cardId = null, preset = null) {
   editingCardId = cardId;
   const card = cards.find((item) => item.id === cardId);
+  const source = card || preset;
   dialogTitle.textContent = card ? "案件カード編集" : "案件カード追加";
   deleteButton.hidden = !card;
   completeButton.hidden = !card || card.status === "done";
 
-  fields.company.value = card?.company || "";
-  fields.plate.value = card?.plate || "";
-  fields.car.value = card?.car || "";
-  fields.work.value = card?.work || "";
-  fields.customer.value = card?.customer || "";
+  fields.company.value = source?.company || "";
+  fields.plate.value = source?.plate || "";
+  fields.car.value = source?.car || "";
+  fields.work.value = source?.work || "";
+  fields.customer.value = source?.customer || "";
   fields.assignee.value =
-    card?.assigneeId ||
+    source?.assigneeId ||
     (activeMobileTab !== ALL_PEOPLE_TAB ? activeMobileTab : visiblePeople()[0]?.id || people[0]?.id);
-  fields.status.value = card?.status || STATUSES[0].id;
+  fields.status.value = card ? card.status : STATUSES[0].id;
 
   dialog.showModal();
   fields.company.focus();
@@ -434,6 +483,7 @@ function saveFormCard() {
   }
 
   normalizeOrders();
+  rememberSuggestions(formCard);
   saveCards();
   renderBoard();
   closeDialog();
@@ -638,7 +688,10 @@ function renderHistoryList() {
         <span>${escapeHtml(card.plate)} ${escapeHtml(card.car)} / ${escapeHtml(card.work)}</span>
         <span>${escapeHtml(personById(card.assigneeId).name)} / ${formatDateTime(card.completedAt)}</span>
       </div>
-      <button class="secondary-button restore-card-button" type="button">戻す</button>
+      <div class="history-row-actions">
+        <button class="secondary-button reregister-card-button" type="button">再登録</button>
+        <button class="secondary-button restore-card-button" type="button">戻す</button>
+      </div>
     `;
     historyList.appendChild(row);
   });
@@ -743,6 +796,14 @@ closeHistoryButton.addEventListener("click", () => historyDialog.close());
 saveHistoryButton.addEventListener("click", () => historyDialog.close());
 addPersonButton.addEventListener("click", addPerson);
 seedPeopleButton.addEventListener("click", resetSamplePeople);
+photoAddButton.addEventListener("click", () => photoInput.click());
+photoInput.addEventListener("change", () => importFromImage(photoInput.files[0]));
+choosePhotoAgainButton.addEventListener("click", () => {
+  photoInput.value = "";
+  photoInput.click();
+});
+closePhotoButton.addEventListener("click", closePhotoDialog);
+closePhotoConfirmButton.addEventListener("click", closePhotoDialog);
 
 mobileTabs.addEventListener("click", (event) => {
   const tab = event.target.closest(".mobile-tab");
@@ -780,9 +841,33 @@ membersList.addEventListener("click", (event) => {
 
 historyList.addEventListener("click", (event) => {
   const row = event.target.closest(".history-row");
-  if (!row || !event.target.classList.contains("restore-card-button")) return;
-  restoreCard(row.dataset.cardId);
+  if (!row) return;
+  if (event.target.classList.contains("restore-card-button")) {
+    restoreCard(row.dataset.cardId);
+  }
+  if (event.target.classList.contains("reregister-card-button")) {
+    const source = cards.find((card) => card.id === row.dataset.cardId);
+    if (!source) return;
+    historyDialog.close();
+    openCardDialog(null, { ...source, status: "not-started", completedAt: null });
+  }
 });
+
+function importFromImage(file) {
+  if (!file || !file.type.startsWith("image/")) return;
+  if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+  photoPreviewUrl = URL.createObjectURL(file);
+  photoPreview.src = photoPreviewUrl;
+  photoDialog.showModal();
+}
+
+function closePhotoDialog() {
+  photoDialog.close();
+  photoInput.value = "";
+  photoPreview.removeAttribute("src");
+  if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+  photoPreviewUrl = null;
+}
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -814,5 +899,10 @@ historyDialog.addEventListener("click", (event) => {
   if (event.target === historyDialog) historyDialog.close();
 });
 
+photoDialog.addEventListener("click", (event) => {
+  if (event.target === photoDialog) closePhotoDialog();
+});
+
 populateSelects();
+renderSuggestions();
 renderBoard();
