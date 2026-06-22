@@ -107,6 +107,8 @@ const closeLightboxButton = document.querySelector("#close-lightbox-button");
 const ocrButton = document.querySelector("#ocr-button");
 const ocrLoading = document.querySelector("#ocr-loading");
 const ocrProgressText = document.querySelector("#ocr-progress-text");
+const ocrFeedback = document.querySelector("#ocr-feedback");
+const ocrResultToggle = document.querySelector("#ocr-result-toggle");
 const ocrResultPanel = document.querySelector("#ocr-result-panel");
 const ocrResult = document.querySelector("#ocr-result");
 const ocrResultNote = document.querySelector("#ocr-result-note");
@@ -826,6 +828,9 @@ removeImageButton.addEventListener("click", removeFormImage);
 imagePreviewButton.addEventListener("click", openImageLightbox);
 closeLightboxButton.addEventListener("click", () => imageLightbox.close());
 ocrButton.addEventListener("click", runOcr);
+ocrResultToggle.addEventListener("click", () => {
+  setOcrResultExpanded(ocrResultPanel.hidden);
+});
 
 Object.values(fields).forEach((field) => {
   field.addEventListener("input", () => field.classList.remove("is-ocr-filled"));
@@ -922,7 +927,8 @@ async function runOcr() {
     if (requestId !== ocrRequestId || !dialog.open) return;
     const text = result.data.text.trim();
     ocrResult.value = text;
-    ocrResultPanel.hidden = false;
+    ocrFeedback.hidden = false;
+    setOcrResultExpanded(false);
 
     const candidates = extractCardCandidates(text);
     const appliedCount = applyOcrCandidates(candidates);
@@ -966,30 +972,27 @@ function updateOcrProgress(message) {
 }
 
 function extractCardCandidates(rawText) {
-  const text = toHalfWidthDigits(rawText).replaceAll("\r", "");
-  const lines = text
+  const lines = normalizeOcrText(rawText)
     .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
+    .map(normalizeOcrLine)
     .filter(Boolean);
 
   const company =
-    findLabeledValue(lines, ["社名", "会社名", "法人名"]) ||
-    lines.find((line) => /(株式会社|有限会社|合同会社|商店|運送|設備|工業|自動車)/.test(line));
-  const plateSource = findLabeledValue(lines, ["ナンバー下4桁", "ナンバー", "登録番号", "車両番号"]);
-  const labeledPlate = lastFourDigits(plateSource);
-  const fallbackPlateLine = lines.find((line) => /(ナンバー|登録番号|車両番号)/.test(line));
-  const plate =
-    labeledPlate ||
-    lastFourDigits(fallbackPlateLine) ||
-    lines.map(lastFourDigits).find(Boolean) ||
-    "";
-  const car = findLabeledValue(lines, ["車名", "車種", "車両名"]);
+    findLabeledValue(lines, COMPANY_LABELS) ||
+    findFirstMatchingLine(
+      lines,
+      /(株式会社|有限会社|合同会社|一般社団法人|[^\s]{1,24}(商店|運送|設備|工業|自動車|モータース)(?:\s|$))/,
+    );
+  const plate = extractPlateNumber(lines);
+  const car =
+    findLabeledValue(lines, CAR_LABELS) ||
+    findFirstMatchingLine(lines, COMMON_CAR_NAME_PATTERN);
   const work =
-    findLabeledValue(lines, ["作業内容", "整備内容", "ご用命", "作業"]) ||
-    lines.find((line) => /(車検|点検|交換|修理|整備|オイル|タイヤ|板金|塗装)/.test(line));
+    findLabeledValue(lines, WORK_LABELS) ||
+    findFirstMatchingLine(lines, WORK_KEYWORD_PATTERN);
   const customer =
-    findLabeledValue(lines, ["顧客名", "お客様名", "氏名", "お名前"]) ||
-    lines.find((line) => /様$/.test(line));
+    findLabeledValue(lines, CUSTOMER_LABELS) ||
+    lines.find((line) => line !== "お客様" && /[\p{L}々ー]{2,}\s*(様|さま)$/u.test(line));
 
   return {
     company: cleanCandidate(company),
@@ -1000,30 +1003,156 @@ function extractCardCandidates(rawText) {
   };
 }
 
+const COMPANY_LABELS = [
+  "お客様会社名",
+  "得意先名",
+  "請求先名",
+  "事業者名",
+  "会社名",
+  "法人名",
+  "社名",
+];
+const PLATE_LABELS = [
+  "ナンバー下4桁",
+  "自動車登録番号",
+  "登録ナンバー",
+  "車両番号",
+  "登録番号",
+  "ナンバー",
+];
+const CAR_LABELS = ["車種名", "通称名", "車両名", "車名", "車種"];
+const WORK_LABELS = [
+  "ご依頼内容",
+  "作業指示",
+  "修理内容",
+  "整備内容",
+  "作業内容",
+  "依頼事項",
+  "ご用命",
+  "作業",
+];
+const CUSTOMER_LABELS = [
+  "お客様名",
+  "ご担当者名",
+  "顧客名",
+  "お名前",
+  "ご氏名",
+  "氏名",
+  "お客様",
+];
+const ALL_OCR_LABELS = [
+  ...COMPANY_LABELS,
+  ...PLATE_LABELS,
+  ...CAR_LABELS,
+  ...WORK_LABELS,
+  ...CUSTOMER_LABELS,
+];
+const WORK_KEYWORD_PATTERN =
+  /(車検|法定点検|定期点検|点検|交換|修理|整備|オイル|タイヤ|バッテリー|ブレーキ|板金|鈑金|塗装)/;
+const COMMON_CAR_NAME_PATTERN =
+  /(N-?BOX|ハイエース|プロボックス|エルフ|キャンター|キャラバン|プリウス|アクア|フィット|タント|スペーシア|ジムニー|ノート|セレナ|ヴォクシー|アルファード|ハスラー|クラウン|フォレスター|レヴォーグ|CX-?\d)/i;
+
+function normalizeOcrText(value) {
+  return String(value)
+    .normalize("NFKC")
+    .replaceAll("\r", "")
+    .replace(/[|｜]/g, " ");
+}
+
+function normalizeOcrLine(line) {
+  return line
+    .replace(/^[\s■□●○◆◇・*※]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function findLabeledValue(lines, labels) {
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
     for (const label of labels) {
-      const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const match = line.match(new RegExp(`^${escapedLabel}\\s*[:：]?\\s*(.+)$`));
-      if (match?.[1]) return match[1];
+      const match = line.match(new RegExp(`${spacedLabelPattern(label)}\\s*[:：=ー-]?\\s*(.*)$`, "i"));
+      if (!match) continue;
+
+      const sameLineValue = cleanCandidate(match[1]);
+      if (sameLineValue && !looksLikeOnlyLabel(sameLineValue)) return sameLineValue;
+
+      const nextLineValue = cleanCandidate(lines[lineIndex + 1]);
+      if (nextLineValue && !containsOcrLabel(nextLineValue)) return nextLineValue;
     }
   }
   return "";
 }
 
-function lastFourDigits(value = "") {
-  const digits = String(value).replace(/\D/g, "");
-  return digits.length >= 4 ? digits.slice(-4) : "";
+function spacedLabelPattern(label) {
+  return [...label]
+    .map((character) => character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s*");
 }
 
-function toHalfWidthDigits(value) {
-  return String(value).replace(/[０-９]/g, (digit) =>
-    String.fromCharCode(digit.charCodeAt(0) - 0xfee0),
+function containsOcrLabel(value) {
+  return ALL_OCR_LABELS.some((label) =>
+    new RegExp(spacedLabelPattern(label), "i").test(value),
   );
 }
 
+function looksLikeOnlyLabel(value) {
+  const compactValue = value.replace(/[\s:：=ー-]/g, "");
+  return ALL_OCR_LABELS.some((label) => compactValue === label.replace(/\s/g, ""));
+}
+
+function findFirstMatchingLine(lines, pattern) {
+  const line = lines.find((candidate) => !containsOcrLabel(candidate) && pattern.test(candidate));
+  return cleanCandidate(line);
+}
+
+function extractPlateNumber(lines) {
+  const labeledLineIndex = lines.findIndex((line) =>
+    PLATE_LABELS.some((label) => new RegExp(spacedLabelPattern(label), "i").test(line)),
+  );
+  const priorityValues = [];
+
+  if (labeledLineIndex >= 0) {
+    priorityValues.push(
+      findLabeledValue(lines, PLATE_LABELS),
+      lines[labeledLineIndex],
+      lines[labeledLineIndex + 1],
+    );
+  }
+
+  const fallbackLines = lines.filter(
+    (line) => !/(電話|TEL|FAX|日付|年月日|〒|郵便)/i.test(line),
+  );
+  const candidates = [...priorityValues, ...fallbackLines];
+  for (const value of candidates) {
+    const plate = lastFourPlateDigits(value);
+    if (plate) return plate;
+  }
+  return "";
+}
+
+function lastFourPlateDigits(value = "") {
+  const normalized = String(value)
+    .normalize("NFKC")
+    .replace(/[〇Oo]/g, "0")
+    .replace(/[Il|]/g, "1");
+  const digitGroups = normalized.match(/\d[\d\s・.ー-]{2,10}\d/g) || [];
+
+  for (let index = digitGroups.length - 1; index >= 0; index -= 1) {
+    const digits = digitGroups[index].replace(/\D/g, "");
+    if (digits.length >= 4) return digits.slice(-4);
+  }
+
+  const standalone = normalized.match(/(?:^|\D)(\d{4})(?:\D|$)/);
+  return standalone?.[1] || "";
+}
+
 function cleanCandidate(value = "") {
-  return String(value).replace(/^[\s:：・-]+|[\s:：・-]+$/g, "").trim();
+  const cleaned = String(value)
+    .replace(/^[\s:：=・ー-]+|[\s:：=・ー-]+$/g, "")
+    .replace(/\s+(?=(社名|会社名|ナンバー|登録番号|車名|車種|作業内容|整備内容|顧客名|お客様名)\s*[:：=])/i, "\n")
+    .split("\n")[0]
+    .trim();
+  return cleaned.length <= 80 ? cleaned : cleaned.slice(0, 80).trim();
 }
 
 function applyOcrCandidates(candidates) {
@@ -1040,12 +1169,19 @@ function applyOcrCandidates(candidates) {
 function resetOcrResult() {
   ocrRequestId += 1;
   ocrResult.value = "";
-  ocrResultPanel.hidden = true;
+  ocrFeedback.hidden = true;
+  setOcrResultExpanded(false);
   ocrLoading.hidden = true;
   ocrButton.disabled = !pendingImageData || isOcrRunning;
   ["company", "plate", "car", "work", "customer"].forEach((key) => {
     fields[key].classList.remove("is-ocr-filled");
   });
+}
+
+function setOcrResultExpanded(expanded) {
+  ocrResultPanel.hidden = !expanded;
+  ocrResultToggle.setAttribute("aria-expanded", String(expanded));
+  ocrResultToggle.textContent = expanded ? "読み取り結果を閉じる" : "読み取り結果を表示";
 }
 
 async function processImageFile(file) {

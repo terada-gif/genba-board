@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>デジタル朝礼ボード v0.6</title>
-    <link rel="stylesheet" href="./styles.css?v=0.6" />
+    <title>デジタル朝礼ボード v0.7</title>
+    <link rel="stylesheet" href="./styles.css?v=0.7" />
   </head>
   <body>
     <header class="topbar">
       <div>
-        <h1>デジタル朝礼ボード v0.6</h1>
-        <p>整備工場 作業カード v0.6</p>
+        <h1>デジタル朝礼ボード v0.7</h1>
+        <p>整備工場 作業カード v0.7</p>
       </div>
       <div class="topbar-actions">
         <div class="topbar-management-actions">
@@ -42,9 +42,12 @@
         </div>
 
         <section class="image-import" aria-labelledby="image-import-title">
+          <div class="workflow-step-heading">
+            <span class="step-number">1</span>
+            <strong id="image-import-title">写真を選ぶ</strong>
+          </div>
           <div id="image-drop-zone" class="image-drop-zone">
             <div id="image-empty-state" class="image-empty-state">
-              <strong id="image-import-title">写真から読み込み</strong>
               <span class="drop-hint">画像をここにドラッグ＆ドロップ</span>
               <div class="image-input-actions">
                 <label class="secondary-button camera-input-button" for="camera-input">写真を撮る</label>
@@ -68,19 +71,33 @@
           <input id="camera-input" class="visually-hidden" type="file" accept="image/*" capture="environment" />
           <input id="gallery-input" class="visually-hidden" type="file" accept="image/*" />
           <div class="ocr-control-row">
+            <span class="step-number">2</span>
             <button id="ocr-button" class="secondary-button" type="button" disabled>文字を読み取る</button>
             <div id="ocr-loading" class="ocr-loading" role="status" aria-live="polite" hidden>
               <span class="loading-spinner" aria-hidden="true"></span>
               <span id="ocr-progress-text">読み取り準備中...</span>
             </div>
           </div>
+          <div id="ocr-feedback" class="ocr-feedback" hidden>
+            <p id="ocr-result-note">候補をフォームへ反映しました。内容を確認し、必要に応じて修正してください。</p>
+            <button
+              id="ocr-result-toggle"
+              class="text-button"
+              type="button"
+              aria-expanded="false"
+              aria-controls="ocr-result-panel"
+            >読み取り結果を表示</button>
+          </div>
           <div id="ocr-result-panel" class="ocr-result-panel" hidden>
             <label for="ocr-result">OCR結果（全文）</label>
             <textarea id="ocr-result" rows="6" readonly></textarea>
-            <p id="ocr-result-note">候補をフォームへ反映しました。内容を確認し、必要に応じて修正してください。</p>
           </div>
         </section>
 
+        <div class="workflow-step-heading form-step-heading">
+          <span class="step-number">3</span>
+          <strong>内容を確認して保存</strong>
+        </div>
         <div class="form-grid">
           <label>
             社名
@@ -170,6 +187,6 @@
       src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"
       onerror="this.onerror=null;this.src='https://unpkg.com/tesseract.js@7/dist/tesseract.min.js'"
     ></script>
-    <script src="./app.js?v=0.6"></script>
+    <script src="./app.js?v=0.7"></script>
   </body>
 </html>
