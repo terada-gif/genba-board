@@ -35,7 +35,7 @@
     </main>
 
     <dialog id="card-dialog" class="card-dialog">
-      <form id="card-form" method="dialog">
+      <form id="card-form" method="dialog" autocomplete="off">
         <div class="dialog-head">
           <h2 id="dialog-title">案件カード</h2>
           <button class="icon-button" type="button" id="close-dialog-button" aria-label="閉じる">×</button>
@@ -74,31 +74,31 @@
           <div class="form-field">
             <label for="company-input">社名</label>
             <div class="autocomplete-field" data-suggestion-field="company">
-              <input id="company-input" name="company" autocomplete="organization" required />
+              <input id="company-input" name="job_company_text" autocomplete="off" data-lpignore="true" required />
               <div class="suggestion-list" role="listbox" hidden></div>
             </div>
           </div>
           <label>
             ナンバー下4桁
-            <input id="plate-input" name="plate" inputmode="numeric" maxlength="4" required />
+            <input id="plate-input" name="job_plate_suffix" autocomplete="off" inputmode="numeric" maxlength="4" required />
           </label>
           <div class="form-field">
             <label for="car-input">車名</label>
             <div class="autocomplete-field" data-suggestion-field="car">
-              <input id="car-input" name="car" required />
+              <input id="car-input" name="job_vehicle_text" autocomplete="off" required />
               <div class="suggestion-list" role="listbox" hidden></div>
             </div>
           </div>
           <div class="form-field work-form-field">
             <label for="work-input">作業内容</label>
             <div class="autocomplete-field" data-suggestion-field="work">
-              <input id="work-input" name="work" required />
+              <input id="work-input" name="job_work_text" autocomplete="off" required />
               <div class="suggestion-list" role="listbox" hidden></div>
             </div>
             <div class="work-template-section">
               <div id="work-template-list" class="work-template-list"></div>
               <div class="work-template-add">
-                <input id="work-template-input" aria-label="作業テンプレ名" placeholder="テンプレを追加" />
+                <input id="work-template-input" name="template_label_entry" autocomplete="off" aria-label="作業テンプレ名" placeholder="テンプレを追加" />
                 <button id="add-work-template-button" class="icon-mini-button" type="button" title="テンプレを追加" aria-label="テンプレを追加">＋</button>
               </div>
             </div>
@@ -106,7 +106,7 @@
           <div class="form-field">
             <label for="customer-input">顧客名</label>
             <div class="autocomplete-field" data-suggestion-field="customer">
-              <input id="customer-input" name="customer" autocomplete="name" required />
+              <input id="customer-input" name="job_customer_text" autocomplete="off" data-lpignore="true" data-1p-ignore="true" required />
               <div class="suggestion-list" role="listbox" hidden></div>
             </div>
           </div>
@@ -152,7 +152,7 @@
     </dialog>
 
     <dialog id="members-dialog" class="members-dialog">
-      <form id="members-form" method="dialog">
+      <form id="members-form" method="dialog" autocomplete="off">
         <div class="dialog-head">
           <h2>メンバー設定</h2>
           <button class="icon-button" type="button" id="close-members-button" aria-label="閉じる">×</button>

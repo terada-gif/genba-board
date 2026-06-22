@@ -834,7 +834,7 @@ function renderMembersList() {
             <input class="member-visible-input" type="checkbox" ${person.visible !== false ? "checked" : ""} />
             表示
           </label>
-          <input class="member-name-input" value="${escapeHtml(person.name)}" aria-label="作業者名" />
+          <input class="member-name-input" name="worker_label_${index}" value="${escapeHtml(person.name)}" autocomplete="off" data-lpignore="true" aria-label="作業者名" />
           <span class="member-count">${count}件</span>
           <button class="icon-mini-button move-person-up" type="button" ${index === 0 ? "disabled" : ""}>↑</button>
           <button class="icon-mini-button move-person-down" type="button" ${index === people.length - 1 ? "disabled" : ""}>↓</button>
