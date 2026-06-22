@@ -18,9 +18,20 @@ const STATUSES = [
 
 const CARDS_STORAGE_KEY = "morning-board-cards-v1";
 const PEOPLE_STORAGE_KEY = "morning-board-people-v1";
-const SUGGESTIONS_STORAGE_KEY = "morning-board-suggestions-v1";
+const SUGGESTIONS_STORAGE_KEY = "morning-board-suggestions-v2";
+const LEGACY_SUGGESTIONS_STORAGE_KEY = "morning-board-suggestions-v1";
+const WORK_TEMPLATES_STORAGE_KEY = "morning-board-work-templates-v1";
 const ALL_PEOPLE_TAB = "all";
 const HISTORY_DAYS = 30;
+const SUGGESTION_FIELDS = ["company", "customer", "car", "work"];
+const DEFAULT_WORK_TEMPLATES = [
+  "ドラレコ取付",
+  "ETC取付",
+  "エアコン点検",
+  "バッテリー交換",
+  "車検",
+  "点検",
+];
 
 const seedCards = [
   {
@@ -104,16 +115,10 @@ const galleryInput = document.querySelector("#gallery-input");
 const imageLightbox = document.querySelector("#image-lightbox");
 const lightboxImage = document.querySelector("#lightbox-image");
 const closeLightboxButton = document.querySelector("#close-lightbox-button");
-const ocrButton = document.querySelector("#ocr-button");
-const ocrLoading = document.querySelector("#ocr-loading");
-const ocrProgressText = document.querySelector("#ocr-progress-text");
-const ocrFeedback = document.querySelector("#ocr-feedback");
-const ocrResultToggle = document.querySelector("#ocr-result-toggle");
-const ocrResultPanel = document.querySelector("#ocr-result-panel");
-const ocrResult = document.querySelector("#ocr-result");
-const ocrResultNote = document.querySelector("#ocr-result-note");
-const companySuggestions = document.querySelector("#company-suggestions");
-const customerSuggestions = document.querySelector("#customer-suggestions");
+const autocompleteFields = document.querySelectorAll(".autocomplete-field");
+const workTemplateList = document.querySelector("#work-template-list");
+const workTemplateInput = document.querySelector("#work-template-input");
+const addWorkTemplateButton = document.querySelector("#add-work-template-button");
 
 const fields = {
   company: document.querySelector("#company-input"),
@@ -131,10 +136,8 @@ let editingCardId = null;
 let dragState = null;
 let activeMobileTab = ALL_PEOPLE_TAB;
 let suggestions = loadSuggestions();
+let workTemplates = loadWorkTemplates();
 let pendingImageData = null;
-let ocrWorker = null;
-let isOcrRunning = false;
-let ocrRequestId = 0;
 
 function loadPeople() {
   const stored = localStorage.getItem(PEOPLE_STORAGE_KEY);
@@ -174,6 +177,8 @@ function normalizeCard(card) {
   return {
     ...card,
     imageData: card.imageData || null,
+    createdAt: card.createdAt || null,
+    updatedAt: card.updatedAt || card.completedAt || card.completed_at || null,
     completedAt:
       card.status === "done"
         ? card.completedAt || card.completed_at || new Date().toISOString()
@@ -190,39 +195,194 @@ function saveCards() {
 }
 
 function loadSuggestions() {
-  const cardValues = (field) => cards.map((card) => card[field]);
+  const emptySuggestions = Object.fromEntries(SUGGESTION_FIELDS.map((field) => [field, []]));
   try {
-    const stored = JSON.parse(localStorage.getItem(SUGGESTIONS_STORAGE_KEY) || "{}");
-    return {
-      companies: uniqueSuggestions([...(stored.companies || []), ...cardValues("company")]),
-      customers: uniqueSuggestions([...(stored.customers || []), ...cardValues("customer")]),
-    };
+    const stored = JSON.parse(localStorage.getItem(SUGGESTIONS_STORAGE_KEY) || "null");
+    if (stored) {
+      SUGGESTION_FIELDS.forEach((field) => {
+        emptySuggestions[field] = normalizeSuggestionRecords(stored[field] || []);
+      });
+      return emptySuggestions;
+    }
+
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_SUGGESTIONS_STORAGE_KEY) || "{}");
+    emptySuggestions.company = normalizeSuggestionRecords(legacy.companies || []);
+    emptySuggestions.customer = normalizeSuggestionRecords(legacy.customers || []);
+    return emptySuggestions;
   } catch {
-    return {
-      companies: uniqueSuggestions(cardValues("company")),
-      customers: uniqueSuggestions(cardValues("customer")),
-    };
+    return emptySuggestions;
   }
 }
 
-function uniqueSuggestions(values) {
-  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+function normalizeSuggestionRecords(records) {
+  const now = Date.now();
+  const normalized = records
+    .map((record, index) => ({
+      value: String(typeof record === "string" ? record : record?.value || "").trim(),
+      usedAt:
+        Number(
+          typeof record === "string"
+            ? now - (records.length - 1 - index)
+            : record?.usedAt,
+        ) || 0,
+    }))
+    .filter((record) => record.value);
+  return dedupeSuggestionRecords(normalized);
 }
 
 function rememberSuggestions(card) {
-  suggestions.companies = uniqueSuggestions([...suggestions.companies, card.company]);
-  suggestions.customers = uniqueSuggestions([...suggestions.customers, card.customer]);
+  const usedAt = Date.now();
+  SUGGESTION_FIELDS.forEach((field) => {
+    const value = String(card[field] || "").trim();
+    if (!value) return;
+    suggestions[field] = dedupeSuggestionRecords([
+      { value, usedAt },
+      ...suggestions[field],
+    ]).slice(0, 100);
+  });
   localStorage.setItem(SUGGESTIONS_STORAGE_KEY, JSON.stringify(suggestions));
-  renderSuggestions();
 }
 
-function renderSuggestions() {
-  companySuggestions.innerHTML = suggestions.companies
-    .map((value) => `<option value="${escapeHtml(value)}"></option>`)
+function dedupeSuggestionRecords(records) {
+  const byValue = new Map();
+  records.forEach((record) => {
+    const key = normalizeSuggestionValue(record.value);
+    const current = byValue.get(key);
+    if (!key || (current && current.usedAt >= record.usedAt)) return;
+    byValue.set(key, record);
+  });
+  return [...byValue.values()].sort((a, b) => b.usedAt - a.usedAt);
+}
+
+function normalizeSuggestionValue(value) {
+  return String(value || "").normalize("NFKC").trim().toLocaleLowerCase("ja-JP");
+}
+
+function suggestionCandidates(field, query = "") {
+  const cardRecords = cards.map((card, index) => ({
+    value: String(card[field] || "").trim(),
+    usedAt:
+      Date.parse(card.updatedAt || card.completedAt || card.createdAt || "") || index + 1,
+  }));
+  const normalizedQuery = normalizeSuggestionValue(query);
+
+  return dedupeSuggestionRecords([...suggestions[field], ...cardRecords])
+    .filter((record) => {
+      const value = normalizeSuggestionValue(record.value);
+      return value && value !== normalizedQuery && value.includes(normalizedQuery);
+    })
+    .sort((a, b) => {
+      const aStarts = normalizeSuggestionValue(a.value).startsWith(normalizedQuery);
+      const bStarts = normalizeSuggestionValue(b.value).startsWith(normalizedQuery);
+      if (aStarts !== bStarts) return aStarts ? -1 : 1;
+      return b.usedAt - a.usedAt;
+    })
+    .slice(0, 5);
+}
+
+function loadWorkTemplates() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(WORK_TEMPLATES_STORAGE_KEY) || "null");
+    if (Array.isArray(stored)) return uniqueTemplateNames(stored);
+  } catch {
+    // Use defaults when stored data cannot be read.
+  }
+  return [...DEFAULT_WORK_TEMPLATES];
+}
+
+function uniqueTemplateNames(values) {
+  const seen = new Set();
+  return values.filter((value) => {
+    const name = String(value || "").trim();
+    const key = normalizeSuggestionValue(name);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map((value) => String(value).trim());
+}
+
+function saveWorkTemplates() {
+  localStorage.setItem(WORK_TEMPLATES_STORAGE_KEY, JSON.stringify(workTemplates));
+}
+
+function renderSuggestionList(field) {
+  const container = document.querySelector(`[data-suggestion-field="${field}"]`);
+  const list = container?.querySelector(".suggestion-list");
+  if (!list) return;
+  const candidates = suggestionCandidates(field, fields[field].value);
+  list.innerHTML = candidates
+    .map(
+      (record) => `
+        <button class="suggestion-option" type="button" role="option" data-value="${escapeHtml(record.value)}">
+          ${escapeHtml(record.value)}
+        </button>
+      `,
+    )
     .join("");
-  customerSuggestions.innerHTML = suggestions.customers
-    .map((value) => `<option value="${escapeHtml(value)}"></option>`)
+  list.hidden = candidates.length === 0;
+}
+
+function hideSuggestionLists(except = null) {
+  autocompleteFields.forEach((container) => {
+    if (container === except) return;
+    container.querySelector(".suggestion-list").hidden = true;
+  });
+}
+
+function selectSuggestion(field, value) {
+  fields[field].value = value;
+  fields[field].focus();
+  hideSuggestionLists();
+}
+
+function handleSuggestionKeydown(event, field) {
+  const list = event.currentTarget.parentElement.querySelector(".suggestion-list");
+  const options = [...list.querySelectorAll(".suggestion-option")];
+  if (options.length === 0) return;
+  const activeIndex = options.findIndex((option) => option.classList.contains("is-active"));
+
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex = (activeIndex + direction + options.length) % options.length;
+    options.forEach((option) => option.classList.remove("is-active"));
+    options[nextIndex].classList.add("is-active");
+  }
+
+  if (event.key === "Enter" && activeIndex >= 0) {
+    event.preventDefault();
+    selectSuggestion(field, options[activeIndex].dataset.value);
+  }
+
+  if (event.key === "Escape") hideSuggestionLists();
+}
+
+function renderWorkTemplates() {
+  workTemplateList.innerHTML = workTemplates
+    .map(
+      (template, index) => `
+        <span class="work-template-item">
+          <button class="work-template-button" type="button" data-index="${index}">${escapeHtml(template)}</button>
+          <button class="delete-template-button" type="button" data-index="${index}" title="${escapeHtml(template)}を削除" aria-label="${escapeHtml(template)}を削除">×</button>
+        </span>
+      `,
+    )
     .join("");
+}
+
+function addWorkTemplate() {
+  const name = workTemplateInput.value.trim();
+  if (!name) return;
+  workTemplates = uniqueTemplateNames([...workTemplates, name]);
+  saveWorkTemplates();
+  renderWorkTemplates();
+  workTemplateInput.value = "";
+}
+
+function removeWorkTemplate(index) {
+  workTemplates.splice(index, 1);
+  saveWorkTemplates();
+  renderWorkTemplates();
 }
 
 function statusById(statusId) {
@@ -449,7 +609,7 @@ function openCardDialog(cardId = null, preset = null) {
   fields.status.value = card ? card.status : STATUSES[0].id;
   pendingImageData = source?.imageData || null;
   updateImagePreview();
-  resetOcrResult();
+  hideSuggestionLists();
 
   dialog.showModal();
   fields.company.focus();
@@ -461,7 +621,7 @@ function closeDialog() {
   editingCardId = null;
   pendingImageData = null;
   updateImagePreview();
-  resetOcrResult();
+  hideSuggestionLists();
 }
 
 function collectFormCard() {
@@ -483,6 +643,7 @@ function nextOrderFor(personId) {
 
 function saveFormCard() {
   const formCard = collectFormCard();
+  const savedAt = new Date().toISOString();
 
   if (editingCardId) {
     const index = cards.findIndex((card) => card.id === editingCardId);
@@ -490,6 +651,7 @@ function saveFormCard() {
     cards[index] = {
       ...previous,
       ...formCard,
+      updatedAt: savedAt,
       completedAt:
         formCard.status === "done"
           ? previous.completedAt || new Date().toISOString()
@@ -503,6 +665,8 @@ function saveFormCard() {
     cards.push({
       id: crypto.randomUUID(),
       ...formCard,
+      createdAt: savedAt,
+      updatedAt: savedAt,
       completedAt: formCard.status === "done" ? new Date().toISOString() : null,
       order: nextOrderFor(formCard.assigneeId),
     });
@@ -827,13 +991,48 @@ galleryInput.addEventListener("change", () => importFromImage(galleryInput.files
 removeImageButton.addEventListener("click", removeFormImage);
 imagePreviewButton.addEventListener("click", openImageLightbox);
 closeLightboxButton.addEventListener("click", () => imageLightbox.close());
-ocrButton.addEventListener("click", runOcr);
-ocrResultToggle.addEventListener("click", () => {
-  setOcrResultExpanded(ocrResultPanel.hidden);
+addWorkTemplateButton.addEventListener("click", addWorkTemplate);
+
+workTemplateInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  addWorkTemplate();
 });
 
-Object.values(fields).forEach((field) => {
-  field.addEventListener("input", () => field.classList.remove("is-ocr-filled"));
+workTemplateList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-index]");
+  if (!button) return;
+  const index = Number(button.dataset.index);
+  if (button.classList.contains("delete-template-button")) {
+    removeWorkTemplate(index);
+    return;
+  }
+  fields.work.value = workTemplates[index];
+  hideSuggestionLists();
+  fields.work.focus();
+});
+
+autocompleteFields.forEach((container) => {
+  const field = container.dataset.suggestionField;
+  const input = fields[field];
+  const list = container.querySelector(".suggestion-list");
+
+  input.addEventListener("focus", () => {
+    hideSuggestionLists(container);
+    renderSuggestionList(field);
+  });
+  input.addEventListener("input", () => renderSuggestionList(field));
+  input.addEventListener("keydown", (event) => handleSuggestionKeydown(event, field));
+  list.addEventListener("pointerdown", (event) => {
+    const option = event.target.closest(".suggestion-option");
+    if (!option) return;
+    event.preventDefault();
+    selectSuggestion(field, option.dataset.value);
+  });
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (!event.target.closest(".autocomplete-field")) hideSuggestionLists();
 });
 
 imageDropZone.addEventListener("dragover", (event) => {
@@ -904,284 +1103,12 @@ async function importFromImage(file) {
   try {
     pendingImageData = await processImageFile(file);
     updateImagePreview();
-    resetOcrResult();
   } catch {
     alert("画像を読み込めませんでした。別の画像を選択してください。");
   } finally {
     cameraInput.value = "";
     galleryInput.value = "";
   }
-}
-
-async function runOcr() {
-  if (!pendingImageData || isOcrRunning) return;
-  const requestId = ++ocrRequestId;
-  isOcrRunning = true;
-  ocrButton.disabled = true;
-  ocrLoading.hidden = false;
-  ocrProgressText.textContent = "読み取り準備中...";
-
-  try {
-    const worker = await getOcrWorker();
-    const result = await worker.recognize(pendingImageData);
-    if (requestId !== ocrRequestId || !dialog.open) return;
-    const text = result.data.text.trim();
-    ocrResult.value = text;
-    ocrFeedback.hidden = false;
-    setOcrResultExpanded(false);
-
-    const candidates = extractCardCandidates(text);
-    const appliedCount = applyOcrCandidates(candidates);
-    ocrResultNote.textContent = appliedCount
-      ? `${appliedCount}項目の候補を反映しました。内容を確認し、必要に応じて修正してください。`
-      : "フォームへ反映できる候補は見つかりませんでした。OCR結果を見ながら入力してください。";
-  } catch {
-    if (requestId === ocrRequestId && dialog.open) {
-      alert("文字を読み取れませんでした。通信環境や画像を確認して、もう一度お試しください。");
-    }
-  } finally {
-    isOcrRunning = false;
-    ocrLoading.hidden = true;
-    ocrButton.disabled = !pendingImageData;
-  }
-}
-
-async function getOcrWorker() {
-  if (!window.Tesseract) throw new Error("Tesseract.js is unavailable");
-  if (!ocrWorker) {
-    ocrWorker = await window.Tesseract.createWorker(["jpn", "eng"], 1, {
-      logger: updateOcrProgress,
-    });
-  }
-  return ocrWorker;
-}
-
-function updateOcrProgress(message) {
-  const labels = {
-    "loading tesseract core": "OCRエンジンを準備中",
-    "initializing tesseract": "OCRエンジンを初期化中",
-    "loading language traineddata": "日本語データを読み込み中",
-    "initializing api": "文字認識を準備中",
-    "recognizing text": "文字を読み取り中",
-  };
-  const label = labels[message.status] || "読み取り準備中";
-  const progress = Number.isFinite(message.progress)
-    ? ` ${Math.round(message.progress * 100)}%`
-    : "";
-  ocrProgressText.textContent = `${label}${progress}`;
-}
-
-function extractCardCandidates(rawText) {
-  const lines = normalizeOcrText(rawText)
-    .split("\n")
-    .map(normalizeOcrLine)
-    .filter(Boolean);
-
-  const company =
-    findLabeledValue(lines, COMPANY_LABELS) ||
-    findFirstMatchingLine(
-      lines,
-      /(株式会社|有限会社|合同会社|一般社団法人|[^\s]{1,24}(商店|運送|設備|工業|自動車|モータース)(?:\s|$))/,
-    );
-  const plate = extractPlateNumber(lines);
-  const car =
-    findLabeledValue(lines, CAR_LABELS) ||
-    findFirstMatchingLine(lines, COMMON_CAR_NAME_PATTERN);
-  const work =
-    findLabeledValue(lines, WORK_LABELS) ||
-    findFirstMatchingLine(lines, WORK_KEYWORD_PATTERN);
-  const customer =
-    findLabeledValue(lines, CUSTOMER_LABELS) ||
-    lines.find((line) => line !== "お客様" && /[\p{L}々ー]{2,}\s*(様|さま)$/u.test(line));
-
-  return {
-    company: cleanCandidate(company),
-    plate,
-    car: cleanCandidate(car),
-    work: cleanCandidate(work),
-    customer: cleanCandidate(customer),
-  };
-}
-
-const COMPANY_LABELS = [
-  "お客様会社名",
-  "得意先名",
-  "請求先名",
-  "事業者名",
-  "会社名",
-  "法人名",
-  "社名",
-];
-const PLATE_LABELS = [
-  "ナンバー下4桁",
-  "自動車登録番号",
-  "登録ナンバー",
-  "車両番号",
-  "登録番号",
-  "ナンバー",
-];
-const CAR_LABELS = ["車種名", "通称名", "車両名", "車名", "車種"];
-const WORK_LABELS = [
-  "ご依頼内容",
-  "作業指示",
-  "修理内容",
-  "整備内容",
-  "作業内容",
-  "依頼事項",
-  "ご用命",
-  "作業",
-];
-const CUSTOMER_LABELS = [
-  "お客様名",
-  "ご担当者名",
-  "顧客名",
-  "お名前",
-  "ご氏名",
-  "氏名",
-  "お客様",
-];
-const ALL_OCR_LABELS = [
-  ...COMPANY_LABELS,
-  ...PLATE_LABELS,
-  ...CAR_LABELS,
-  ...WORK_LABELS,
-  ...CUSTOMER_LABELS,
-];
-const WORK_KEYWORD_PATTERN =
-  /(車検|法定点検|定期点検|点検|交換|修理|整備|オイル|タイヤ|バッテリー|ブレーキ|板金|鈑金|塗装)/;
-const COMMON_CAR_NAME_PATTERN =
-  /(N-?BOX|ハイエース|プロボックス|エルフ|キャンター|キャラバン|プリウス|アクア|フィット|タント|スペーシア|ジムニー|ノート|セレナ|ヴォクシー|アルファード|ハスラー|クラウン|フォレスター|レヴォーグ|CX-?\d)/i;
-
-function normalizeOcrText(value) {
-  return String(value)
-    .normalize("NFKC")
-    .replaceAll("\r", "")
-    .replace(/[|｜]/g, " ");
-}
-
-function normalizeOcrLine(line) {
-  return line
-    .replace(/^[\s■□●○◆◇・*※]+/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function findLabeledValue(lines, labels) {
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex];
-    for (const label of labels) {
-      const match = line.match(new RegExp(`${spacedLabelPattern(label)}\\s*[:：=ー-]?\\s*(.*)$`, "i"));
-      if (!match) continue;
-
-      const sameLineValue = cleanCandidate(match[1]);
-      if (sameLineValue && !looksLikeOnlyLabel(sameLineValue)) return sameLineValue;
-
-      const nextLineValue = cleanCandidate(lines[lineIndex + 1]);
-      if (nextLineValue && !containsOcrLabel(nextLineValue)) return nextLineValue;
-    }
-  }
-  return "";
-}
-
-function spacedLabelPattern(label) {
-  return [...label]
-    .map((character) => character.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("\\s*");
-}
-
-function containsOcrLabel(value) {
-  return ALL_OCR_LABELS.some((label) =>
-    new RegExp(spacedLabelPattern(label), "i").test(value),
-  );
-}
-
-function looksLikeOnlyLabel(value) {
-  const compactValue = value.replace(/[\s:：=ー-]/g, "");
-  return ALL_OCR_LABELS.some((label) => compactValue === label.replace(/\s/g, ""));
-}
-
-function findFirstMatchingLine(lines, pattern) {
-  const line = lines.find((candidate) => !containsOcrLabel(candidate) && pattern.test(candidate));
-  return cleanCandidate(line);
-}
-
-function extractPlateNumber(lines) {
-  const labeledLineIndex = lines.findIndex((line) =>
-    PLATE_LABELS.some((label) => new RegExp(spacedLabelPattern(label), "i").test(line)),
-  );
-  const priorityValues = [];
-
-  if (labeledLineIndex >= 0) {
-    priorityValues.push(
-      findLabeledValue(lines, PLATE_LABELS),
-      lines[labeledLineIndex],
-      lines[labeledLineIndex + 1],
-    );
-  }
-
-  const fallbackLines = lines.filter(
-    (line) => !/(電話|TEL|FAX|日付|年月日|〒|郵便)/i.test(line),
-  );
-  const candidates = [...priorityValues, ...fallbackLines];
-  for (const value of candidates) {
-    const plate = lastFourPlateDigits(value);
-    if (plate) return plate;
-  }
-  return "";
-}
-
-function lastFourPlateDigits(value = "") {
-  const normalized = String(value)
-    .normalize("NFKC")
-    .replace(/[〇Oo]/g, "0")
-    .replace(/[Il|]/g, "1");
-  const digitGroups = normalized.match(/\d[\d\s・.ー-]{2,10}\d/g) || [];
-
-  for (let index = digitGroups.length - 1; index >= 0; index -= 1) {
-    const digits = digitGroups[index].replace(/\D/g, "");
-    if (digits.length >= 4) return digits.slice(-4);
-  }
-
-  const standalone = normalized.match(/(?:^|\D)(\d{4})(?:\D|$)/);
-  return standalone?.[1] || "";
-}
-
-function cleanCandidate(value = "") {
-  const cleaned = String(value)
-    .replace(/^[\s:：=・ー-]+|[\s:：=・ー-]+$/g, "")
-    .replace(/\s+(?=(社名|会社名|ナンバー|登録番号|車名|車種|作業内容|整備内容|顧客名|お客様名)\s*[:：=])/i, "\n")
-    .split("\n")[0]
-    .trim();
-  return cleaned.length <= 80 ? cleaned : cleaned.slice(0, 80).trim();
-}
-
-function applyOcrCandidates(candidates) {
-  let appliedCount = 0;
-  ["company", "plate", "car", "work", "customer"].forEach((key) => {
-    if (!candidates[key] || fields[key].value.trim()) return;
-    fields[key].value = candidates[key];
-    fields[key].classList.add("is-ocr-filled");
-    appliedCount += 1;
-  });
-  return appliedCount;
-}
-
-function resetOcrResult() {
-  ocrRequestId += 1;
-  ocrResult.value = "";
-  ocrFeedback.hidden = true;
-  setOcrResultExpanded(false);
-  ocrLoading.hidden = true;
-  ocrButton.disabled = !pendingImageData || isOcrRunning;
-  ["company", "plate", "car", "work", "customer"].forEach((key) => {
-    fields[key].classList.remove("is-ocr-filled");
-  });
-}
-
-function setOcrResultExpanded(expanded) {
-  ocrResultPanel.hidden = !expanded;
-  ocrResultToggle.setAttribute("aria-expanded", String(expanded));
-  ocrResultToggle.textContent = expanded ? "読み取り結果を閉じる" : "読み取り結果を表示";
 }
 
 async function processImageFile(file) {
@@ -1223,7 +1150,6 @@ function loadImage(source) {
 function updateImagePreview() {
   imageEmptyState.hidden = Boolean(pendingImageData);
   imagePreviewState.hidden = !pendingImageData;
-  ocrButton.disabled = !pendingImageData || isOcrRunning;
   if (pendingImageData) {
     imageThumbnail.src = pendingImageData;
   } else {
@@ -1236,7 +1162,6 @@ function removeFormImage() {
   cameraInput.value = "";
   galleryInput.value = "";
   updateImagePreview();
-  resetOcrResult();
 }
 
 function openImageLightbox() {
@@ -1280,5 +1205,5 @@ imageLightbox.addEventListener("click", (event) => {
 });
 
 populateSelects();
-renderSuggestions();
+renderWorkTemplates();
 renderBoard();

@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>デジタル朝礼ボード v0.7</title>
-    <link rel="stylesheet" href="./styles.css?v=0.7" />
+    <title>デジタル朝礼ボード v0.8</title>
+    <link rel="stylesheet" href="./styles.css?v=0.8" />
   </head>
   <body>
     <header class="topbar">
       <div>
-        <h1>デジタル朝礼ボード v0.7</h1>
-        <p>整備工場 作業カード v0.7</p>
+        <h1>デジタル朝礼ボード v0.8</h1>
+        <p>整備工場 作業カード v0.8</p>
       </div>
       <div class="topbar-actions">
         <div class="topbar-management-actions">
@@ -42,10 +42,7 @@
         </div>
 
         <section class="image-import" aria-labelledby="image-import-title">
-          <div class="workflow-step-heading">
-            <span class="step-number">1</span>
-            <strong id="image-import-title">写真を選ぶ</strong>
-          </div>
+          <strong id="image-import-title" class="section-label">写真を添付（任意）</strong>
           <div id="image-drop-zone" class="image-drop-zone">
             <div id="image-empty-state" class="image-empty-state">
               <span class="drop-hint">画像をここにドラッグ＆ドロップ</span>
@@ -70,57 +67,49 @@
           </div>
           <input id="camera-input" class="visually-hidden" type="file" accept="image/*" capture="environment" />
           <input id="gallery-input" class="visually-hidden" type="file" accept="image/*" />
-          <div class="ocr-control-row">
-            <span class="step-number">2</span>
-            <button id="ocr-button" class="secondary-button" type="button" disabled>文字を読み取る</button>
-            <div id="ocr-loading" class="ocr-loading" role="status" aria-live="polite" hidden>
-              <span class="loading-spinner" aria-hidden="true"></span>
-              <span id="ocr-progress-text">読み取り準備中...</span>
-            </div>
-          </div>
-          <div id="ocr-feedback" class="ocr-feedback" hidden>
-            <p id="ocr-result-note">候補をフォームへ反映しました。内容を確認し、必要に応じて修正してください。</p>
-            <button
-              id="ocr-result-toggle"
-              class="text-button"
-              type="button"
-              aria-expanded="false"
-              aria-controls="ocr-result-panel"
-            >読み取り結果を表示</button>
-          </div>
-          <div id="ocr-result-panel" class="ocr-result-panel" hidden>
-            <label for="ocr-result">OCR結果（全文）</label>
-            <textarea id="ocr-result" rows="6" readonly></textarea>
-          </div>
         </section>
 
-        <div class="workflow-step-heading form-step-heading">
-          <span class="step-number">3</span>
-          <strong>内容を確認して保存</strong>
-        </div>
+        <strong class="section-label form-section-label">案件内容</strong>
         <div class="form-grid">
-          <label>
-            社名
-            <input id="company-input" name="company" list="company-suggestions" autocomplete="organization" required />
-            <datalist id="company-suggestions"></datalist>
-          </label>
+          <div class="form-field">
+            <label for="company-input">社名</label>
+            <div class="autocomplete-field" data-suggestion-field="company">
+              <input id="company-input" name="company" autocomplete="organization" required />
+              <div class="suggestion-list" role="listbox" hidden></div>
+            </div>
+          </div>
           <label>
             ナンバー下4桁
             <input id="plate-input" name="plate" inputmode="numeric" maxlength="4" required />
           </label>
-          <label>
-            車名
-            <input id="car-input" name="car" required />
-          </label>
-          <label>
-            作業内容
-            <input id="work-input" name="work" required />
-          </label>
-          <label>
-            顧客名
-            <input id="customer-input" name="customer" list="customer-suggestions" autocomplete="name" required />
-            <datalist id="customer-suggestions"></datalist>
-          </label>
+          <div class="form-field">
+            <label for="car-input">車名</label>
+            <div class="autocomplete-field" data-suggestion-field="car">
+              <input id="car-input" name="car" required />
+              <div class="suggestion-list" role="listbox" hidden></div>
+            </div>
+          </div>
+          <div class="form-field work-form-field">
+            <label for="work-input">作業内容</label>
+            <div class="autocomplete-field" data-suggestion-field="work">
+              <input id="work-input" name="work" required />
+              <div class="suggestion-list" role="listbox" hidden></div>
+            </div>
+            <div class="work-template-section">
+              <div id="work-template-list" class="work-template-list"></div>
+              <div class="work-template-add">
+                <input id="work-template-input" aria-label="作業テンプレ名" placeholder="テンプレを追加" />
+                <button id="add-work-template-button" class="icon-mini-button" type="button" title="テンプレを追加" aria-label="テンプレを追加">＋</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="customer-input">顧客名</label>
+            <div class="autocomplete-field" data-suggestion-field="customer">
+              <input id="customer-input" name="customer" autocomplete="name" required />
+              <div class="suggestion-list" role="listbox" hidden></div>
+            </div>
+          </div>
           <label>
             担当者
             <select id="assignee-input" name="assignee"></select>
@@ -183,10 +172,6 @@
       </form>
     </dialog>
 
-    <script
-      src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"
-      onerror="this.onerror=null;this.src='https://unpkg.com/tesseract.js@7/dist/tesseract.min.js'"
-    ></script>
-    <script src="./app.js?v=0.7"></script>
+    <script src="./app.js?v=0.8"></script>
   </body>
 </html>
