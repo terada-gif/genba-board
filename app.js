@@ -16,11 +16,6 @@ const STATUSES = [
   { id: "done", label: "完了" },
 ];
 
-const CARDS_STORAGE_KEY = "morning-board-cards-v1";
-const PEOPLE_STORAGE_KEY = "morning-board-people-v1";
-const SUGGESTIONS_STORAGE_KEY = "morning-board-suggestions-v2";
-const LEGACY_SUGGESTIONS_STORAGE_KEY = "morning-board-suggestions-v1";
-const WORK_TEMPLATES_STORAGE_KEY = "morning-board-work-templates-v1";
 const ALL_PEOPLE_TAB = "all";
 const HISTORY_DAYS = 30;
 const SUGGESTION_FIELDS = ["company", "customer", "car", "work"];
@@ -220,37 +215,11 @@ function registerServiceWorker() {
 }
 
 function loadPeople() {
-  const stored = localStorage.getItem(PEOPLE_STORAGE_KEY);
-  if (!stored) return DEFAULT_PEOPLE.map((person) => ({ ...person }));
-
-  try {
-    const parsed = JSON.parse(stored);
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return DEFAULT_PEOPLE.map((person) => ({ ...person }));
-    }
-
-    return parsed.map((person, index) => ({
-      id: person.id || crypto.randomUUID(),
-      name: person.name || `作業者${index + 1}`,
-      visible: person.visible !== false,
-    }));
-  } catch {
-    return DEFAULT_PEOPLE.map((person) => ({ ...person }));
-  }
+  return BoardRepository.loadPeople(DEFAULT_PEOPLE);
 }
 
 function loadCards() {
-  const stored = localStorage.getItem(CARDS_STORAGE_KEY);
-  if (!stored) return seedCards.map((card) => ({ ...card }));
-
-  try {
-    const parsed = JSON.parse(stored);
-    return Array.isArray(parsed)
-      ? parsed.map(normalizeCard)
-      : seedCards.map((card) => normalizeCard({ ...card }));
-  } catch {
-    return seedCards.map((card) => normalizeCard({ ...card }));
-  }
+  return BoardRepository.loadCards(seedCards, normalizeCard);
 }
 
 function normalizeCard(card) {
@@ -267,31 +236,15 @@ function normalizeCard(card) {
 }
 
 function savePeople() {
-  localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(people));
+  BoardRepository.savePeople(people);
 }
 
 function saveCards() {
-  localStorage.setItem(CARDS_STORAGE_KEY, JSON.stringify(cards));
+  BoardRepository.saveCards(cards);
 }
 
 function loadSuggestions() {
-  const emptySuggestions = Object.fromEntries(SUGGESTION_FIELDS.map((field) => [field, []]));
-  try {
-    const stored = JSON.parse(localStorage.getItem(SUGGESTIONS_STORAGE_KEY) || "null");
-    if (stored) {
-      SUGGESTION_FIELDS.forEach((field) => {
-        emptySuggestions[field] = normalizeSuggestionRecords(stored[field] || []);
-      });
-      return emptySuggestions;
-    }
-
-    const legacy = JSON.parse(localStorage.getItem(LEGACY_SUGGESTIONS_STORAGE_KEY) || "{}");
-    emptySuggestions.company = normalizeSuggestionRecords(legacy.companies || []);
-    emptySuggestions.customer = normalizeSuggestionRecords(legacy.customers || []);
-    return emptySuggestions;
-  } catch {
-    return emptySuggestions;
-  }
+  return BoardRepository.loadSuggestions(SUGGESTION_FIELDS, normalizeSuggestionRecords);
 }
 
 function normalizeSuggestionRecords(records) {
@@ -320,7 +273,7 @@ function rememberSuggestions(card) {
       ...suggestions[field],
     ]).slice(0, 100);
   });
-  localStorage.setItem(SUGGESTIONS_STORAGE_KEY, JSON.stringify(suggestions));
+  BoardRepository.saveSuggestions(suggestions);
 }
 
 function dedupeSuggestionRecords(records) {
@@ -361,13 +314,7 @@ function suggestionCandidates(field, query = "") {
 }
 
 function loadWorkTemplates() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(WORK_TEMPLATES_STORAGE_KEY) || "null");
-    if (Array.isArray(stored)) return uniqueTemplateNames(stored);
-  } catch {
-    // Use defaults when stored data cannot be read.
-  }
-  return [...DEFAULT_WORK_TEMPLATES];
+  return BoardRepository.loadWorkTemplates(DEFAULT_WORK_TEMPLATES, uniqueTemplateNames);
 }
 
 function uniqueTemplateNames(values) {
@@ -382,7 +329,7 @@ function uniqueTemplateNames(values) {
 }
 
 function saveWorkTemplates() {
-  localStorage.setItem(WORK_TEMPLATES_STORAGE_KEY, JSON.stringify(workTemplates));
+  BoardRepository.saveWorkTemplates(workTemplates);
 }
 
 function renderSuggestionList(field) {

@@ -1,0 +1,8 @@
+[build]
+  command = "node scripts/generate-runtime-config.mjs"
+  publish = "."
+
+[[headers]]
+  for = "/runtime-config.js"
+  [headers.values]
+    Cache-Control = "no-cache"

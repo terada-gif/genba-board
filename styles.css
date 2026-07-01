@@ -36,6 +36,10 @@ body {
     sans-serif;
 }
 
+body.auth-required {
+  overflow: hidden;
+}
+
 button,
 input,
 select {
@@ -70,6 +74,120 @@ select {
   margin: 4px 0 0;
   color: #66737d;
   font-size: 13px;
+}
+
+.cloud-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #cdd9df;
+  padding: 9px 28px;
+  background: #eef3f5;
+  color: #43535e;
+  font-size: 13px;
+}
+
+.cloud-mode-banner[hidden] {
+  display: none;
+}
+
+.cloud-session {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.text-button {
+  border: 0;
+  padding: 4px;
+  background: transparent;
+  color: var(--navy);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.text-button:hover {
+  text-decoration: underline;
+}
+
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(242, 244, 245, 0.96);
+  backdrop-filter: blur(10px);
+}
+
+.auth-gate[hidden] {
+  display: none;
+}
+
+.login-panel {
+  width: min(430px, 100%);
+  border: 1px solid #d6dee2;
+  border-radius: 12px;
+  padding: 26px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(19, 35, 45, 0.14);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.login-brand img {
+  border-radius: 10px;
+}
+
+.login-brand span,
+.login-brand strong {
+  display: block;
+}
+
+.login-brand span {
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.login-brand strong {
+  color: var(--navy);
+  font-size: 22px;
+}
+
+.login-form {
+  display: grid;
+  gap: 16px;
+}
+
+.login-form .primary-button {
+  min-height: 48px;
+}
+
+.login-message,
+.login-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.login-message[data-state="error"] {
+  color: var(--red);
+}
+
+.login-footnote {
+  margin-top: 18px;
+  border-top: 1px solid #e4e9ec;
+  padding-top: 15px;
 }
 
 .topbar-actions {
@@ -1012,6 +1130,22 @@ input::placeholder {
 
   .topbar p {
     display: none;
+  }
+
+  .cloud-mode-banner {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 14px;
+  }
+
+  .cloud-session {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .login-panel {
+    padding: 20px;
   }
 
   .primary-button,

@@ -1,9 +1,14 @@
-const CACHE_VERSION = "genba-board-v0.9";
+const CACHE_VERSION = "genba-board-v1.0-dev";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=0.9",
-  "./app.js?v=0.9",
+  "./styles.css?v=1.0-dev",
+  "./runtime-config.js?v=1.0-dev",
+  "./data/local-repository.js?v=1.0-dev",
+  "./data/supabase-repository.js?v=1.0-dev",
+  "./data/repository.js?v=1.0-dev",
+  "./app.js?v=1.0-dev",
+  "./auth.js?v=1.0-dev",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -25,6 +30,19 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) return;
+
+  if (new URL(event.request.url).pathname.endsWith("/runtime-config.js")) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request)),
+    );
+    return;
+  }
 
   if (event.request.mode === "navigate") {
     event.respondWith(
