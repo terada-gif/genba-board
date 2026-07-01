@@ -8,6 +8,8 @@
   const message = document.querySelector("#login-message");
   const cloudBanner = document.querySelector("#cloud-mode-banner");
   const logoutButton = document.querySelector("#logout-button");
+  let connectedUserId = null;
+  let connectionPromise = null;
 
   if (!repository?.isSupabaseMode) return;
 
@@ -23,6 +25,7 @@
   }
 
   function showLogin() {
+    connectedUserId = null;
     gate.hidden = false;
     document.body.classList.add("auth-required");
     message.textContent = "メールアドレスとパスワードでログインしてください。";
@@ -30,8 +33,37 @@
   }
 
   function showLoginError(error) {
-    message.textContent = error?.message || "ログインできませんでした。設定を確認してください。";
+    const errorMessage = String(error?.message || "");
+    if (/invalid login credentials/i.test(errorMessage)) {
+      message.textContent = "メールアドレスまたはパスワードが正しくありません。";
+    } else if (/failed to fetch|network|load failed/i.test(errorMessage)) {
+      message.textContent = "Supabaseへ接続できません。通信状態と接続設定を確認してください。";
+    } else {
+      message.textContent = errorMessage || "ログインできませんでした。設定を確認してください。";
+    }
     message.dataset.state = "error";
+  }
+
+  function connectSession(session) {
+    if (!session) return Promise.resolve();
+    if (connectedUserId === session.user.id) return Promise.resolve();
+    if (connectionPromise) return connectionPromise;
+
+    global.CloudBoardApp.setSyncState("connecting", "作業者とテンプレを読み込んでいます。");
+    connectionPromise = global.CloudBoardApp
+      .load()
+      .then(() => {
+        connectedUserId = session.user.id;
+        showBoard(session);
+      })
+      .catch((error) => {
+        showLoginError(error);
+        throw error;
+      })
+      .finally(() => {
+        connectionPromise = null;
+      });
+    return connectionPromise;
   }
 
   async function prepareAuth() {
@@ -46,18 +78,17 @@
       const client = await repository.supabase.getClient();
       const { data, error } = await client.auth.getSession();
       if (error) throw error;
-      if (data.session) showBoard(data.session);
+      if (data.session) await connectSession(data.session);
 
       client.auth.onAuthStateChange((_event, session) => {
         if (session) {
-          showBoard(session);
+          void connectSession(session).catch(() => {});
         } else {
           showLogin();
         }
       });
     } catch (error) {
       showLoginError(error);
-      submitButton.disabled = true;
     }
   }
 
@@ -74,7 +105,7 @@
         password: passwordInput.value,
       });
       if (error) throw error;
-      showBoard(data.session);
+      await connectSession(data.session);
       form.reset();
     } catch (error) {
       showLoginError(error);

@@ -122,6 +122,10 @@ const requestNotificationButton = document.querySelector("#request-notification-
 const testNotificationButton = document.querySelector("#test-notification-button");
 const notificationStatus = document.querySelector("#notification-status");
 const notificationHelp = document.querySelector("#notification-help");
+const cloudSyncStatus = document.querySelector("#cloud-sync-status");
+const cloudSyncMessage = document.querySelector("#cloud-sync-message");
+const cloudJobNote = document.querySelector("#cloud-job-note");
+const cardSubmitButton = form.querySelector('button[type="submit"]');
 
 const fields = {
   company: document.querySelector("#company-input"),
@@ -141,6 +145,69 @@ let activeMobileTab = ALL_PEOPLE_TAB;
 let suggestions = loadSuggestions();
 let workTemplates = loadWorkTemplates();
 let pendingImageData = null;
+let pendingCloudWrites = 0;
+let cloudWriteFailed = false;
+const workerUpdateTimers = new Map();
+
+function cloudErrorMessage(error) {
+  const message = String(error?.message || "");
+  if (/jwt|session|not authenticated/i.test(message)) return "ログイン状態を確認してください。";
+  if (/permission|policy|row-level security|42501/i.test(message)) return "データを更新する権限がありません。";
+  if (/failed to fetch|network|load failed/i.test(message)) return "Supabaseへ接続できません。通信状態を確認してください。";
+  return message || "クラウド処理に失敗しました。";
+}
+
+function setCloudSyncState(state, message) {
+  if (!BoardRepository.isSupabaseMode || !cloudSyncStatus) return;
+  const labels = {
+    connecting: "クラウド接続中",
+    saved: "クラウド保存済み",
+    error: "クラウドエラー",
+  };
+  cloudSyncStatus.textContent = labels[state] || labels.connecting;
+  cloudSyncStatus.dataset.state = state;
+  cloudSyncMessage.textContent = message;
+}
+
+function trackCloudWrite(operation) {
+  if (!BoardRepository.isSupabaseMode) return;
+  if (pendingCloudWrites === 0) cloudWriteFailed = false;
+  pendingCloudWrites += 1;
+  setCloudSyncState("connecting", "変更を保存しています。");
+
+  Promise.resolve(operation)
+    .catch((error) => {
+      cloudWriteFailed = true;
+      setCloudSyncState("error", cloudErrorMessage(error));
+    })
+    .finally(() => {
+      pendingCloudWrites -= 1;
+      if (pendingCloudWrites === 0 && !cloudWriteFailed) {
+        setCloudSyncState("saved", "作業者とテンプレはクラウド保存されています。");
+      }
+    });
+}
+
+async function loadCloudBoardData() {
+  setCloudSyncState("connecting", "作業者とテンプレを読み込んでいます。");
+  cloudWriteFailed = false;
+  try {
+    const cloudData = await BoardRepository.loadCloudData();
+    people = cloudData.people;
+    workTemplates = uniqueTemplateNames(cloudData.workTemplates);
+    cards = [];
+    activeMobileTab = ALL_PEOPLE_TAB;
+    addButton.title = "案件保存は準備中です。作業テンプレの管理は利用できます";
+    cardSubmitButton.disabled = true;
+    cloudJobNote.hidden = false;
+    renderWorkTemplates();
+    renderBoard();
+    setCloudSyncState("saved", "作業者とテンプレはクラウド保存されています。案件同期は準備中です。");
+  } catch (error) {
+    setCloudSyncState("error", cloudErrorMessage(error));
+    throw new Error(cloudErrorMessage(error));
+  }
+}
 
 function notificationPermissionState() {
   if (!("Notification" in window)) return "unsupported";
@@ -235,8 +302,8 @@ function normalizeCard(card) {
   };
 }
 
-function savePeople() {
-  BoardRepository.savePeople(people);
+function savePeople(operation) {
+  trackCloudWrite(BoardRepository.savePeople(people, operation));
 }
 
 function saveCards() {
@@ -328,8 +395,8 @@ function uniqueTemplateNames(values) {
   }).map((value) => String(value).trim());
 }
 
-function saveWorkTemplates() {
-  BoardRepository.saveWorkTemplates(workTemplates);
+function saveWorkTemplates(operation) {
+  trackCloudWrite(BoardRepository.saveWorkTemplates(workTemplates, operation));
 }
 
 function renderSuggestionList(field) {
@@ -400,15 +467,19 @@ function renderWorkTemplates() {
 function addWorkTemplate() {
   const name = workTemplateInput.value.trim();
   if (!name) return;
-  workTemplates = uniqueTemplateNames([...workTemplates, name]);
-  saveWorkTemplates();
+  const nextTemplates = uniqueTemplateNames([...workTemplates, name]);
+  if (nextTemplates.length === workTemplates.length) return;
+  workTemplates = nextTemplates;
+  saveWorkTemplates({ type: "create", label: name, sortOrder: workTemplates.length - 1 });
   renderWorkTemplates();
   workTemplateInput.value = "";
 }
 
 function removeWorkTemplate(index) {
+  const [removedLabel] = workTemplates.slice(index, index + 1);
+  if (!removedLabel) return;
   workTemplates.splice(index, 1);
-  saveWorkTemplates();
+  saveWorkTemplates({ type: "delete", label: removedLabel });
   renderWorkTemplates();
 }
 
@@ -929,7 +1000,7 @@ function updatePerson(personId, changes) {
   const person = people.find((item) => item.id === personId);
   if (!person) return;
   Object.assign(person, changes);
-  savePeople();
+  savePeople({ type: "update", person: { ...person } });
   renderBoard();
 }
 
@@ -937,7 +1008,18 @@ function renamePerson(personId, name) {
   const person = people.find((item) => item.id === personId);
   if (!person) return;
   person.name = name;
-  savePeople();
+  if (BoardRepository.isSupabaseMode) {
+    clearTimeout(workerUpdateTimers.get(personId));
+    workerUpdateTimers.set(
+      personId,
+      setTimeout(() => {
+        savePeople({ type: "update", person: { ...person } });
+        workerUpdateTimers.delete(personId);
+      }, 450),
+    );
+  } else {
+    savePeople({ type: "update", person: { ...person } });
+  }
   populateSelects();
   renderMobileTabs();
   renderMobileList();
@@ -952,7 +1034,7 @@ function movePerson(personId, direction) {
   if (index < 0 || nextIndex < 0 || nextIndex >= people.length) return;
   const [person] = people.splice(index, 1);
   people.splice(nextIndex, 0, person);
-  savePeople();
+  savePeople({ type: "reorder" });
   renderBoard();
 }
 
@@ -970,15 +1052,18 @@ function deletePerson(personId) {
   }
 
   people = people.filter((item) => item.id !== personId);
+  clearTimeout(workerUpdateTimers.get(personId));
+  workerUpdateTimers.delete(personId);
   if (activeMobileTab === personId) activeMobileTab = ALL_PEOPLE_TAB;
-  savePeople();
+  savePeople({ type: "delete", personId });
   renderBoard();
 }
 
 function addPerson() {
   const name = `作業者${people.length + 1}`;
-  people.push({ id: crypto.randomUUID(), name, visible: true });
-  savePeople();
+  const person = { id: crypto.randomUUID(), name, visible: true };
+  people.push(person);
+  savePeople({ type: "create", person, sortOrder: people.length - 1 });
   renderBoard();
 }
 
@@ -991,9 +1076,13 @@ function resetSamplePeople() {
       existing.visible = true;
       return;
     }
-    people.push({ ...sample, visible: true });
+    people.push({
+      ...sample,
+      id: BoardRepository.isSupabaseMode ? crypto.randomUUID() : sample.id,
+      visible: true,
+    });
   });
-  savePeople();
+  savePeople({ type: "upsert" });
   renderBoard();
 }
 
@@ -1091,6 +1180,16 @@ membersList.addEventListener("change", (event) => {
 
   if (event.target.classList.contains("member-visible-input")) {
     updatePerson(row.dataset.personId, { visible: event.target.checked });
+  }
+  if (
+    BoardRepository.isSupabaseMode &&
+    event.target.classList.contains("member-name-input")
+  ) {
+    const personId = row.dataset.personId;
+    const person = people.find((item) => item.id === personId);
+    clearTimeout(workerUpdateTimers.get(personId));
+    workerUpdateTimers.delete(personId);
+    if (person) savePeople({ type: "update", person: { ...person } });
   }
 });
 
@@ -1247,3 +1346,8 @@ registerServiceWorker();
 populateSelects();
 renderWorkTemplates();
 renderBoard();
+
+window.CloudBoardApp = Object.freeze({
+  load: loadCloudBoardData,
+  setSyncState: setCloudSyncState,
+});

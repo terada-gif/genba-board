@@ -4,22 +4,76 @@
   const mode = requestedMode === "supabase" ? "supabase" : "local";
   const local = new global.LocalRepository();
   const supabase = new global.SupabaseRepository(config);
+  let cloudWriteQueue = Promise.resolve();
 
-  // v1.0-1 keeps board data local while Supabase Auth connectivity is introduced.
-  const dataRepository = local;
+  function enqueueCloudWrite(operation) {
+    const queued = cloudWriteQueue.then(operation);
+    cloudWriteQueue = queued.catch(() => {});
+    return queued;
+  }
 
   global.BoardRepository = Object.freeze({
     mode,
-    dataMode: "local",
+    dataMode: mode === "supabase" ? "supabase-partial" : "local",
     isSupabaseMode: mode === "supabase",
     supabase,
-    loadPeople: (...args) => dataRepository.loadPeople(...args),
-    loadCards: (...args) => dataRepository.loadCards(...args),
-    savePeople: (...args) => dataRepository.savePeople(...args),
-    saveCards: (...args) => dataRepository.saveCards(...args),
-    loadSuggestions: (...args) => dataRepository.loadSuggestions(...args),
-    saveSuggestions: (...args) => dataRepository.saveSuggestions(...args),
-    loadWorkTemplates: (...args) => dataRepository.loadWorkTemplates(...args),
-    saveWorkTemplates: (...args) => dataRepository.saveWorkTemplates(...args),
+    loadPeople: (...args) => local.loadPeople(...args),
+    loadCards: (...args) => local.loadCards(...args),
+    loadSuggestions: (...args) => local.loadSuggestions(...args),
+    saveSuggestions: (...args) => local.saveSuggestions(...args),
+    loadWorkTemplates: (...args) => local.loadWorkTemplates(...args),
+    loadCloudData: () => supabase.loadInitialBoardData(),
+    savePeople(people, operation = {}) {
+      if (mode === "local") return local.savePeople(people);
+      const peopleSnapshot = people.map((person) => ({ ...person }));
+      if (operation.type === "create") {
+        return enqueueCloudWrite(() =>
+          supabase.createWorker(operation.person, operation.sortOrder),
+        );
+      }
+      if (operation.type === "update") {
+        return enqueueCloudWrite(() => supabase.updateWorker(operation.person));
+      }
+      if (operation.type === "delete") {
+        return enqueueCloudWrite(() =>
+          supabase
+            .deleteWorker(operation.personId)
+            .then(() => supabase.updateWorkerOrder(peopleSnapshot)),
+        );
+      }
+      if (operation.type === "reorder") {
+        return enqueueCloudWrite(() => supabase.updateWorkerOrder(peopleSnapshot));
+      }
+      if (operation.type === "upsert") {
+        return enqueueCloudWrite(() => supabase.upsertWorkers(peopleSnapshot));
+      }
+      return Promise.resolve();
+    },
+    saveCards(cards) {
+      if (mode === "local") return local.saveCards(cards);
+      return Promise.resolve({ deferred: true });
+    },
+    saveWorkTemplates(workTemplates, operation = {}) {
+      if (mode === "local") return local.saveWorkTemplates(workTemplates);
+      const templateSnapshot = [...workTemplates];
+      if (operation.type === "create") {
+        return enqueueCloudWrite(() =>
+          supabase.createWorkTemplate(operation.label, operation.sortOrder),
+        );
+      }
+      if (operation.type === "delete") {
+        return enqueueCloudWrite(() =>
+          supabase
+            .deleteWorkTemplate(operation.label)
+            .then(() => supabase.updateWorkTemplateOrder(templateSnapshot)),
+        );
+      }
+      if (operation.type === "reorder") {
+        return enqueueCloudWrite(() =>
+          supabase.updateWorkTemplateOrder(templateSnapshot),
+        );
+      }
+      return Promise.resolve();
+    },
   });
 })(window);

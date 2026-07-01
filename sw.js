@@ -1,14 +1,14 @@
-const CACHE_VERSION = "genba-board-v1.0-dev";
+const CACHE_VERSION = "genba-board-v1.0-2";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=1.0-dev",
-  "./runtime-config.js?v=1.0-dev",
-  "./data/local-repository.js?v=1.0-dev",
-  "./data/supabase-repository.js?v=1.0-dev",
-  "./data/repository.js?v=1.0-dev",
-  "./app.js?v=1.0-dev",
-  "./auth.js?v=1.0-dev",
+  "./styles.css?v=1.0-2",
+  "./runtime-config.js?v=1.0-2",
+  "./data/local-repository.js?v=1.0-2",
+  "./data/supabase-repository.js?v=1.0-2",
+  "./data/repository.js?v=1.0-2",
+  "./app.js?v=1.0-2",
+  "./auth.js?v=1.0-2",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

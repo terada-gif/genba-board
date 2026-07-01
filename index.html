@@ -8,16 +8,16 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="デジタルホワイトボード" />
-    <title>デジタル朝礼ボード v1.0-dev</title>
+    <title>デジタル朝礼ボード v1.0-2</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-    <link rel="stylesheet" href="./styles.css?v=1.0-dev" />
+    <link rel="stylesheet" href="./styles.css?v=1.0-2" />
   </head>
   <body>
     <header class="topbar">
       <div>
-        <h1>デジタル朝礼ボード v1.0-dev</h1>
-        <p>整備工場 作業カード v1.0-dev</p>
+        <h1>デジタル朝礼ボード v1.0-2</h1>
+        <p>整備工場 作業カード v1.0-2</p>
       </div>
       <div class="topbar-actions">
         <div class="topbar-management-actions">
@@ -32,7 +32,10 @@
     </header>
 
     <aside id="cloud-mode-banner" class="cloud-mode-banner" hidden>
-      <span><strong>Supabase接続準備モード</strong> データはまだこの端末に保存されます。</span>
+      <span class="cloud-sync-summary">
+        <strong id="cloud-sync-status" class="cloud-sync-status" data-state="connecting">クラウド接続中</strong>
+        <span id="cloud-sync-message">作業者とテンプレを読み込んでいます。</span>
+      </span>
       <span class="cloud-session">
         <span id="cloud-session-label">ログイン確認中</span>
         <button id="logout-button" class="text-button" type="button">ログアウト</button>
@@ -136,6 +139,9 @@
           </label>
         </div>
 
+        <p id="cloud-job-note" class="dialog-note cloud-job-note" hidden>
+          案件カードのクラウド保存は次の段階で対応します。作業テンプレの追加・削除は利用できます。
+        </p>
         <div class="dialog-actions">
           <button id="delete-card-button" class="danger-button" type="button">削除</button>
           <div>
@@ -239,15 +245,15 @@
           </p>
           <button id="login-submit-button" class="primary-button" type="submit">ログイン</button>
         </form>
-        <p class="login-footnote">v1.0-devでは認証接続のみを確認し、案件データは端末内に保存します。</p>
+        <p class="login-footnote">v1.0-2では作業者と作業テンプレをクラウド保存します。案件同期は次の段階で対応します。</p>
       </div>
     </section>
 
-    <script src="./runtime-config.js?v=1.0-dev"></script>
-    <script src="./data/local-repository.js?v=1.0-dev"></script>
-    <script src="./data/supabase-repository.js?v=1.0-dev"></script>
-    <script src="./data/repository.js?v=1.0-dev"></script>
-    <script src="./app.js?v=1.0-dev"></script>
-    <script src="./auth.js?v=1.0-dev"></script>
+    <script src="./runtime-config.js?v=1.0-2"></script>
+    <script src="./data/local-repository.js?v=1.0-2"></script>
+    <script src="./data/supabase-repository.js?v=1.0-2"></script>
+    <script src="./data/repository.js?v=1.0-2"></script>
+    <script src="./app.js?v=1.0-2"></script>
+    <script src="./auth.js?v=1.0-2"></script>
   </body>
 </html>
