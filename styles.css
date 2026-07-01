@@ -456,7 +456,8 @@ button:disabled {
 }
 
 .members-dialog,
-.history-dialog {
+.history-dialog,
+.notification-dialog {
   width: min(820px, calc(100vw - 28px));
   border: 1px solid #d4dde2;
   border-radius: 12px;
@@ -465,15 +466,21 @@ button:disabled {
   box-shadow: 0 24px 70px rgba(19, 35, 45, 0.22);
 }
 
+.notification-dialog {
+  width: min(560px, calc(100vw - 28px));
+}
+
 .members-dialog::backdrop,
 .history-dialog::backdrop,
+.notification-dialog::backdrop,
 .image-lightbox::backdrop {
   background: rgba(23, 37, 50, 0.42);
   backdrop-filter: blur(2px);
 }
 
 .members-dialog form,
-.history-dialog form {
+.history-dialog form,
+.notification-dialog form {
   padding: 18px;
 }
 
@@ -903,6 +910,47 @@ button:disabled {
   font-size: 13px;
 }
 
+.notification-settings {
+  display: grid;
+  gap: 16px;
+  padding: 22px 2px 24px;
+}
+
+.notification-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-radius: 10px;
+  padding: 16px;
+  background: #f4f7f8;
+  color: #344551;
+  font-weight: 760;
+}
+
+.notification-status {
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #e7edf0;
+  color: var(--navy);
+  font-size: 13px;
+}
+
+.notification-status[data-permission="granted"] {
+  background: #e8f1eb;
+  color: #355f49;
+}
+
+.notification-status[data-permission="denied"] {
+  background: #faeae9;
+  color: var(--red);
+}
+
+.notification-actions {
+  display: flex;
+  gap: 8px;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -975,7 +1023,7 @@ input::placeholder {
   .topbar-actions {
     gap: 9px;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .topbar-management-actions,
@@ -992,6 +1040,17 @@ input::placeholder {
     min-height: 48px;
   }
 
+  #notification-button {
+    font-size: 0;
+    width: auto;
+    padding: 0;
+  }
+
+  #notification-button::before {
+    content: "通知";
+    font-size: 13px;
+  }
+
   #members-button {
     font-size: 0;
     width: auto;
@@ -999,8 +1058,8 @@ input::placeholder {
   }
 
   #add-card-button {
-    grid-column: 3;
-    grid-row: 1;
+    grid-column: 2;
+    grid-row: 2;
   }
 
   #history-button {
@@ -1222,15 +1281,25 @@ input::placeholder {
 
   .members-dialog form,
   .card-dialog form,
-  .history-dialog form {
+  .history-dialog form,
+  .notification-dialog form {
     padding: 14px;
   }
 
   .card-dialog,
   .members-dialog,
-  .history-dialog {
+  .history-dialog,
+  .notification-dialog {
     width: calc(100vw - 16px);
     max-height: calc(100vh - 8px);
+  }
+
+  .notification-actions {
+    flex-direction: column;
+  }
+
+  .notification-actions button {
+    min-height: 48px;
   }
 
   .dialog-head {

@@ -119,6 +119,14 @@ const autocompleteFields = document.querySelectorAll(".autocomplete-field");
 const workTemplateList = document.querySelector("#work-template-list");
 const workTemplateInput = document.querySelector("#work-template-input");
 const addWorkTemplateButton = document.querySelector("#add-work-template-button");
+const notificationButton = document.querySelector("#notification-button");
+const notificationDialog = document.querySelector("#notification-dialog");
+const closeNotificationButton = document.querySelector("#close-notification-button");
+const saveNotificationButton = document.querySelector("#save-notification-button");
+const requestNotificationButton = document.querySelector("#request-notification-button");
+const testNotificationButton = document.querySelector("#test-notification-button");
+const notificationStatus = document.querySelector("#notification-status");
+const notificationHelp = document.querySelector("#notification-help");
 
 const fields = {
   company: document.querySelector("#company-input"),
@@ -138,6 +146,78 @@ let activeMobileTab = ALL_PEOPLE_TAB;
 let suggestions = loadSuggestions();
 let workTemplates = loadWorkTemplates();
 let pendingImageData = null;
+
+function notificationPermissionState() {
+  if (!("Notification" in window)) return "unsupported";
+  return Notification.permission;
+}
+
+function updateNotificationSettings() {
+  const permission = notificationPermissionState();
+  const labels = {
+    granted: "許可済み",
+    denied: "ブロック中",
+    default: "未設定",
+    unsupported: "非対応",
+  };
+
+  notificationStatus.textContent = labels[permission];
+  notificationStatus.dataset.permission = permission;
+  requestNotificationButton.disabled = permission === "granted" || permission === "denied" || permission === "unsupported";
+  testNotificationButton.disabled = permission !== "granted";
+
+  if (permission === "denied") {
+    notificationHelp.textContent = "ブラウザまたは端末の設定から、このサイトの通知を許可してください。";
+  } else if (permission === "unsupported") {
+    notificationHelp.textContent = "このブラウザでは通知機能を利用できません。";
+  } else if (permission === "granted") {
+    notificationHelp.textContent = "通知は許可されています。端末内テスト通知を確認できます。";
+  } else {
+    notificationHelp.textContent = "通知を許可すると、この端末でテスト通知を確認できます。";
+  }
+}
+
+async function requestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  try {
+    await Notification.requestPermission();
+    updateNotificationSettings();
+  } catch {
+    notificationHelp.textContent = "通知を許可できませんでした。HTTPSで開いているか確認してください。";
+  }
+}
+
+async function showTestNotification() {
+  if (notificationPermissionState() !== "granted") return;
+
+  const options = {
+    body: "通知の準備ができました。案件通知は今後のバージョンで対応します。",
+    icon: "./icons/icon-192.png",
+    badge: "./icons/icon-192.png",
+    tag: "genba-board-local-test",
+  };
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification("デジタルホワイトボード", options);
+      return;
+    }
+
+    new Notification("デジタルホワイトボード", options);
+  } catch {
+    notificationHelp.textContent = "テスト通知を表示できませんでした。端末の通知設定を確認してください。";
+  }
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {
+      // The board remains usable even if PWA registration is unavailable.
+    });
+  });
+}
 
 function loadPeople() {
   const stored = localStorage.getItem(PEOPLE_STORAGE_KEY);
@@ -1204,6 +1284,19 @@ imageLightbox.addEventListener("click", (event) => {
   if (event.target === imageLightbox) imageLightbox.close();
 });
 
+notificationButton.addEventListener("click", () => {
+  updateNotificationSettings();
+  notificationDialog.showModal();
+});
+closeNotificationButton.addEventListener("click", () => notificationDialog.close());
+saveNotificationButton.addEventListener("click", () => notificationDialog.close());
+requestNotificationButton.addEventListener("click", requestNotificationPermission);
+testNotificationButton.addEventListener("click", showTestNotification);
+notificationDialog.addEventListener("click", (event) => {
+  if (event.target === notificationDialog) notificationDialog.close();
+});
+
+registerServiceWorker();
 populateSelects();
 renderWorkTemplates();
 renderBoard();

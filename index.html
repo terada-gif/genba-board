@@ -3,17 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>デジタル朝礼ボード v0.8</title>
-    <link rel="stylesheet" href="./styles.css?v=0.8" />
+    <meta name="theme-color" content="#162a3a" />
+    <meta name="application-name" content="デジタルホワイトボード" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="デジタルホワイトボード" />
+    <title>デジタル朝礼ボード v0.9</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="stylesheet" href="./styles.css?v=0.9" />
   </head>
   <body>
     <header class="topbar">
       <div>
-        <h1>デジタル朝礼ボード v0.8</h1>
-        <p>整備工場 作業カード v0.8</p>
+        <h1>デジタル朝礼ボード v0.9</h1>
+        <p>整備工場 作業カード v0.9</p>
       </div>
       <div class="topbar-actions">
         <div class="topbar-management-actions">
+          <button id="notification-button" class="secondary-button" type="button">通知設定</button>
           <button id="history-button" class="secondary-button" type="button">完了履歴</button>
           <button id="members-button" class="secondary-button" type="button">メンバー設定</button>
         </div>
@@ -172,6 +180,34 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=0.8"></script>
+    <dialog id="notification-dialog" class="notification-dialog">
+      <form method="dialog">
+        <div class="dialog-head">
+          <h2>通知設定</h2>
+          <button class="icon-button" type="button" id="close-notification-button" aria-label="閉じる">×</button>
+        </div>
+
+        <div class="notification-settings">
+          <div class="notification-status-row">
+            <span>この端末の通知</span>
+            <strong id="notification-status" class="notification-status">確認中</strong>
+          </div>
+          <p id="notification-help" class="dialog-note">
+            通知を許可すると、この端末でテスト通知を確認できます。
+          </p>
+          <div class="notification-actions">
+            <button id="request-notification-button" class="primary-button" type="button">通知を許可する</button>
+            <button id="test-notification-button" class="secondary-button" type="button" disabled>テスト通知</button>
+          </div>
+        </div>
+
+        <div class="dialog-actions">
+          <p class="dialog-note">案件通知のクラウド配信は今後のバージョンで対応します。</p>
+          <button class="secondary-button" type="button" id="save-notification-button">閉じる</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js?v=0.9"></script>
   </body>
 </html>
