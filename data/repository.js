@@ -22,7 +22,12 @@
     loadSuggestions: (...args) => local.loadSuggestions(...args),
     saveSuggestions: (...args) => local.saveSuggestions(...args),
     loadWorkTemplates: (...args) => local.loadWorkTemplates(...args),
-    loadCloudData: () => supabase.loadInitialBoardData(),
+    loadCloudData: async () => {
+      await cloudWriteQueue;
+      return supabase.loadInitialBoardData();
+    },
+    subscribeRealtime: (...args) => supabase.subscribeToChanges(...args),
+    unsubscribeRealtime: (channel) => supabase.unsubscribeFromChanges(channel),
     savePeople(people, operation = {}) {
       if (mode === "local") return local.savePeople(people);
       const peopleSnapshot = people.map((person) => ({ ...person }));
@@ -49,9 +54,30 @@
       }
       return Promise.resolve();
     },
-    saveCards(cards) {
+    saveCards(cards, operation = {}) {
       if (mode === "local") return local.saveCards(cards);
-      return Promise.resolve({ deferred: true });
+      const cardSnapshot = cards.map((card) => ({ ...card, imageData: null }));
+      if (operation.type === "create") {
+        return enqueueCloudWrite(() => supabase.createJob(operation.card));
+      }
+      if (operation.type === "update") {
+        return enqueueCloudWrite(() =>
+          supabase
+            .updateJob(operation.card)
+            .then(() => supabase.updateJobOrder(cardSnapshot)),
+        );
+      }
+      if (operation.type === "delete") {
+        return enqueueCloudWrite(() =>
+          supabase
+            .deleteJob(operation.cardId)
+            .then(() => supabase.updateJobOrder(cardSnapshot)),
+        );
+      }
+      if (operation.type === "reorder") {
+        return enqueueCloudWrite(() => supabase.updateJobOrder(cardSnapshot));
+      }
+      return Promise.resolve();
     },
     saveWorkTemplates(workTemplates, operation = {}) {
       if (mode === "local") return local.saveWorkTemplates(workTemplates);

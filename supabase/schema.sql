@@ -114,5 +114,29 @@ create policy "authenticated templates access"
 on public.work_templates for all to authenticated
 using (true) with check (true);
 
--- Realtime publication is intentionally deferred until the v1.0 sync step.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'workers'
+  ) then
+    alter publication supabase_realtime add table public.workers;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'jobs'
+  ) then
+    alter publication supabase_realtime add table public.jobs;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'work_templates'
+  ) then
+    alter publication supabase_realtime add table public.work_templates;
+  end if;
+end;
+$$;
+
 -- Never expose a Secret Key or the legacy service_role key in browser code.

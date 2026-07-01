@@ -16,6 +16,7 @@
   document.body.classList.add("auth-required");
   gate.hidden = false;
   cloudBanner.hidden = false;
+  document.querySelector("#local-save-status").hidden = true;
 
   function showBoard(session) {
     gate.hidden = true;
@@ -26,6 +27,7 @@
 
   function showLogin() {
     connectedUserId = null;
+    void global.CloudBoardApp.disconnect();
     gate.hidden = false;
     document.body.classList.add("auth-required");
     message.textContent = "メールアドレスとパスワードでログインしてください。";
@@ -49,7 +51,7 @@
     if (connectedUserId === session.user.id) return Promise.resolve();
     if (connectionPromise) return connectionPromise;
 
-    global.CloudBoardApp.setSyncState("connecting", "作業者とテンプレを読み込んでいます。");
+    global.CloudBoardApp.setSyncState("connecting", "クラウドデータを読み込んでいます。");
     connectionPromise = global.CloudBoardApp
       .load()
       .then(() => {

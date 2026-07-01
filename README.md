@@ -1,17 +1,17 @@
 # デジタル朝礼ボード
 
-整備工場向けのデジタルホワイトボードPWAです。現在のバージョンは`v1.0-2`です。
+整備工場向けのデジタルホワイトボードPWAです。現在のバージョンは`v1.0-4`です。
 
-## v1.0-2の保存方式
+## v1.0-4の保存方式
 
-`v1.0-2`ではRepository層とSupabase Authに加え、作業者と作業テンプレのクラウド保存に対応しています。
+`v1.0-4`では作業者・案件カード・作業テンプレをSupabaseへ保存し、Realtimeで他端末の変更を同期します。
 
 - `local`モード: ログイン不要。従来どおりlocalStorageへ保存
-- `supabase`モード: メール/パスワードでログインし、作業者と作業テンプレをSupabaseへ保存
-- Supabaseモードの案件カードは未実装のため空表示となり、保存ボタンは無効
-- Realtime、写真Storage、Push通知のクラウド配信は未実装
+- `supabase`モード: メール/パスワードでログインし、作業者・案件・テンプレをSupabaseへ保存
+- 他端末の変更はRealtime受信後、約300msで全件再取得
+- 写真StorageとPush通知のクラウド配信は未実装
 
-Supabaseモードでは、画面上部に「クラウド接続中」「クラウド保存済み」「クラウドエラー」を表示します。
+Supabaseモードでは、画面上部にクラウド保存状態とRealtime接続状態を表示します。
 
 ## PCで開く
 
@@ -71,7 +71,7 @@ PWAのインストールと通知にはHTTPSが必要です。本番のNetlify U
 3. 「ホーム画面に追加」を選ぶ
 4. 追加された「朝礼ボード」アイコンから起動する
 
-iPhone / iPadのWeb Pushは、iOS / iPadOS 16.4以降でホーム画面に追加したWebアプリが対象です。v1.0-2では通知許可と端末内テスト通知のみ対応し、案件更新のPush配信はまだ行いません。
+iPhone / iPadのWeb Pushは、iOS / iPadOS 16.4以降でホーム画面に追加したWebアプリが対象です。v1.0-4では通知許可と端末内テスト通知のみ対応し、案件更新のPush配信はまだ行いません。
 
 ### Android
 
@@ -135,30 +135,51 @@ SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxx
 
 Netlifyで設定後はDeploysから再デプロイし、デプロイログで`generate-runtime-config.mjs`が成功していることを確認します。画面にログインフォームが出ない場合は、`BOARD_DATA_MODE`が`supabase`になっているか確認してください。
 
-## workers / work_templatesの確認
+## クラウド同期の確認
 
 1. Netlify URLを開き、作成したテストユーザーでログイン
 2. 画面上部が「クラウド保存済み」になることを確認
-3. 「メンバー設定」で作業者を追加・改名・表示切替・並べ替え
-4. Supabase Table Editorの`workers`へ反映されたことを確認
-5. 案件追加フォームの作業テンプレを追加・削除
-6. Table Editorの`work_templates`へ反映されたことを確認
-7. 別ブラウザで再ログインし、同じ作業者とテンプレが読み込まれることを確認
+3. 「メンバー設定」で作業者を追加し、`workers`への反映を確認
+4. 案件を追加・編集し、`jobs`への反映を確認
+5. 担当者変更、ステータス変更、ドラッグ並べ替えを確認
+6. 案件を完了し、通常ボードから消えて完了履歴へ入ることを確認
+7. 完了履歴の「戻す」「再登録」を確認
+8. 作業テンプレを追加・削除し、`work_templates`への反映を確認
 
-Realtimeはまだ未実装のため、別端末で変更した内容を見るには再読み込みが必要です。
+## PCとスマホでRealtimeを確認
+
+1. PCとスマホで同じNetlify URLを開き、同じSupabaseプロジェクトの利用者でログイン
+2. 両方に「Realtime接続中」と表示されることを確認
+3. PCで案件を追加し、スマホへ自動表示されることを確認
+4. スマホでステータスを「完了」に変更する
+5. PCの通常ボードから案件が消え、完了履歴へ反映されることを確認
+
+反映されない場合は、最新の`supabase/schema.sql`をSQL Editorで再実行し、DashboardのDatabase > Publicationsで`workers`、`jobs`、`work_templates`が`supabase_realtime`に含まれているか確認してください。
+
+## 写真について
+
+Supabaseモードでは写真添付を無効化しています。写真のSupabase Storage保存は`v1.1`以降で対応予定です。localモードの写真添付は従来どおり利用できます。
+
+## トラブル時の確認
+
+- ログインできない: Authentication > Usersに利用者があり、メール確認済みか確認
+- 権限エラー: `schema.sql`を再適用し、RLS policyがauthenticated向けか確認
+- 接続エラー: `SUPABASE_URL`と`SUPABASE_PUBLISHABLE_KEY`、通信状態を確認
+- Realtimeエラー: publication設定を確認。保存操作とブラウザ再読み込みは引き続き利用可能
+- 古い画面が出る: Netlifyを再デプロイし、PWAを完全終了して再起動
+- Secret Keyおよび`service_role` keyはブラウザやNetlifyの公開設定へ入れない
 
 ## v1.0の今後の実装
 
-1. SupabaseRepositoryへ案件カードのCRUDを追加
-2. 事務所PCのlocalStorageデータを一度だけ移行
-3. Realtimeで他端末の更新を再取得
-4. オフライン時は最終取得データを閲覧専用表示
-5. 複数端末で担当者・ステータス・並び順を検証
+1. 事務所PCのlocalStorageデータを一度だけ移行
+2. 写真をSupabase Storageへ移行
+3. オフライン時は最終取得データを閲覧専用表示
+4. Push通知を実装
 
 ## メモ
 
 - localモードのデータはブラウザの`localStorage`に保存されます。
-- Supabaseモードでは作業者と作業テンプレのみクラウド保存されます。
+- Supabaseモードでは作業者・案件・作業テンプレがクラウド保存されます。
 - localモードでは、アクセスしているブラウザごとに保存データが分かれます。
 - 作業者を非表示にしても、その作業者の案件は削除されません。
 - Service Workerによって基本画面をキャッシュしますが、初回表示には通信が必要です。

@@ -124,8 +124,9 @@ const notificationStatus = document.querySelector("#notification-status");
 const notificationHelp = document.querySelector("#notification-help");
 const cloudSyncStatus = document.querySelector("#cloud-sync-status");
 const cloudSyncMessage = document.querySelector("#cloud-sync-message");
-const cloudJobNote = document.querySelector("#cloud-job-note");
-const cardSubmitButton = form.querySelector('button[type="submit"]');
+const realtimeStatus = document.querySelector("#realtime-status");
+const localSaveStatus = document.querySelector("#local-save-status");
+const cloudPhotoNote = document.querySelector("#cloud-photo-note");
 
 const fields = {
   company: document.querySelector("#company-input"),
@@ -148,12 +149,18 @@ let pendingImageData = null;
 let pendingCloudWrites = 0;
 let cloudWriteFailed = false;
 const workerUpdateTimers = new Map();
+let realtimeChannel = null;
+let realtimeRefreshTimer = null;
+let pendingRealtimeRefresh = false;
+let cloudRefreshPromise = null;
 
 function cloudErrorMessage(error) {
   const message = String(error?.message || "");
   if (/jwt|session|not authenticated/i.test(message)) return "ログイン状態を確認してください。";
   if (/permission|policy|row-level security|42501/i.test(message)) return "データを更新する権限がありません。";
   if (/failed to fetch|network|load failed/i.test(message)) return "Supabaseへ接続できません。通信状態を確認してください。";
+  if (/constraint|23514|23502|invalid input/i.test(message)) return "入力内容を確認してください。";
+  if (/duplicate|23505/i.test(message)) return "同じ内容がすでに登録されています。";
   return message || "クラウド処理に失敗しました。";
 }
 
@@ -162,6 +169,7 @@ function setCloudSyncState(state, message) {
   const labels = {
     connecting: "クラウド接続中",
     saved: "クラウド保存済み",
+    syncing: "同期中",
     error: "クラウドエラー",
   };
   cloudSyncStatus.textContent = labels[state] || labels.connecting;
@@ -169,13 +177,31 @@ function setCloudSyncState(state, message) {
   cloudSyncMessage.textContent = message;
 }
 
+function setRealtimeState(state, message = "") {
+  if (!BoardRepository.isSupabaseMode || !realtimeStatus) return;
+  const labels = {
+    connecting: "Realtime接続中",
+    connected: "Realtime接続中",
+    error: "Realtimeエラー",
+  };
+  realtimeStatus.textContent = labels[state] || labels.connecting;
+  realtimeStatus.dataset.state = state;
+  realtimeStatus.title = message;
+}
+
+function setLocalSaveState(isSaving) {
+  if (BoardRepository.isSupabaseMode || !localSaveStatus) return;
+  localSaveStatus.textContent = isSaving ? "ローカル保存中" : "ローカル保存済み";
+  localSaveStatus.dataset.state = isSaving ? "saving" : "saved";
+}
+
 function trackCloudWrite(operation) {
-  if (!BoardRepository.isSupabaseMode) return;
+  if (!BoardRepository.isSupabaseMode) return operation;
   if (pendingCloudWrites === 0) cloudWriteFailed = false;
   pendingCloudWrites += 1;
   setCloudSyncState("connecting", "変更を保存しています。");
 
-  Promise.resolve(operation)
+  return Promise.resolve(operation)
     .catch((error) => {
       cloudWriteFailed = true;
       setCloudSyncState("error", cloudErrorMessage(error));
@@ -183,30 +209,132 @@ function trackCloudWrite(operation) {
     .finally(() => {
       pendingCloudWrites -= 1;
       if (pendingCloudWrites === 0 && !cloudWriteFailed) {
-        setCloudSyncState("saved", "作業者とテンプレはクラウド保存されています。");
+        setCloudSyncState("saved", "作業者・案件・テンプレはクラウド保存されています。");
       }
     });
 }
 
-async function loadCloudBoardData() {
-  setCloudSyncState("connecting", "作業者とテンプレを読み込んでいます。");
-  cloudWriteFailed = false;
-  try {
-    const cloudData = await BoardRepository.loadCloudData();
-    people = cloudData.people;
-    workTemplates = uniqueTemplateNames(cloudData.workTemplates);
-    cards = [];
-    activeMobileTab = ALL_PEOPLE_TAB;
-    addButton.title = "案件保存は準備中です。作業テンプレの管理は利用できます";
-    cardSubmitButton.disabled = true;
-    cloudJobNote.hidden = false;
-    renderWorkTemplates();
-    renderBoard();
-    setCloudSyncState("saved", "作業者とテンプレはクラウド保存されています。案件同期は準備中です。");
-  } catch (error) {
-    setCloudSyncState("error", cloudErrorMessage(error));
-    throw new Error(cloudErrorMessage(error));
+function persistRepositoryWrite(write) {
+  if (BoardRepository.isSupabaseMode) {
+    try {
+      return trackCloudWrite(write());
+    } catch (error) {
+      return trackCloudWrite(Promise.reject(error));
+    }
   }
+
+  setLocalSaveState(true);
+  try {
+    const result = write();
+    setTimeout(() => setLocalSaveState(false), 120);
+    return result;
+  } catch (error) {
+    localSaveStatus.textContent = "ローカル保存エラー";
+    localSaveStatus.dataset.state = "error";
+    throw error;
+  }
+}
+
+async function refreshCloudBoardData(source = "manual") {
+  if (source === "realtime" && dialog.open) {
+    pendingRealtimeRefresh = true;
+    return;
+  }
+  if (cloudRefreshPromise) {
+    pendingRealtimeRefresh = source === "realtime" || pendingRealtimeRefresh;
+    return cloudRefreshPromise;
+  }
+
+  setCloudSyncState(
+    source === "realtime" ? "syncing" : "connecting",
+    source === "realtime" ? "他端末の変更を同期しています。" : "クラウドデータを読み込んでいます。",
+  );
+  cloudWriteFailed = false;
+
+  cloudRefreshPromise = BoardRepository.loadCloudData()
+    .then((cloudData) => {
+      people = cloudData.people;
+      workTemplates = uniqueTemplateNames(cloudData.workTemplates);
+      cards = cloudData.cards.map(normalizeCard);
+      renderWorkTemplates();
+      renderBoard();
+      setCloudSyncState("saved", "作業者・案件・テンプレはクラウド保存されています。");
+    })
+    .catch((error) => {
+      setCloudSyncState("error", cloudErrorMessage(error));
+      throw new Error(cloudErrorMessage(error));
+    })
+    .finally(() => {
+      cloudRefreshPromise = null;
+      if (pendingRealtimeRefresh && !dialog.open) {
+        pendingRealtimeRefresh = false;
+        scheduleRealtimeRefresh();
+      }
+    });
+
+  return cloudRefreshPromise;
+}
+
+function scheduleRealtimeRefresh() {
+  pendingRealtimeRefresh = false;
+  clearTimeout(realtimeRefreshTimer);
+  setCloudSyncState("syncing", "他端末の変更を受信しました。同期しています。");
+  realtimeRefreshTimer = setTimeout(() => {
+    realtimeRefreshTimer = null;
+    void refreshCloudBoardData("realtime").catch(() => {});
+  }, 300);
+}
+
+function handleRealtimeStatus(status, error) {
+  if (status === "SUBSCRIBED") {
+    setRealtimeState("connected", "他端末の変更を監視しています。");
+    return;
+  }
+  if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+    setRealtimeState("error", error?.message || status);
+    setCloudSyncState("error", "Realtime接続に失敗しました。保存と手動再読み込みは利用できます。");
+    return;
+  }
+  if (status === "CLOSED") {
+    setRealtimeState("error", "Realtime接続が終了しました。");
+  }
+}
+
+async function connectRealtime() {
+  if (realtimeChannel) return;
+  setRealtimeState("connecting", "Realtimeへ接続しています。");
+  try {
+    realtimeChannel = await BoardRepository.subscribeRealtime(
+      scheduleRealtimeRefresh,
+      handleRealtimeStatus,
+    );
+  } catch (error) {
+    setRealtimeState("error", cloudErrorMessage(error));
+    setCloudSyncState("error", "Realtime接続に失敗しました。保存と手動再読み込みは利用できます。");
+  }
+}
+
+async function disconnectRealtime() {
+  clearTimeout(realtimeRefreshTimer);
+  realtimeRefreshTimer = null;
+  pendingRealtimeRefresh = false;
+  if (!realtimeChannel) return;
+  const channel = realtimeChannel;
+  realtimeChannel = null;
+  await BoardRepository.unsubscribeRealtime(channel).catch(() => {});
+}
+
+async function loadCloudBoardData() {
+  localSaveStatus.hidden = true;
+  cloudPhotoNote.hidden = false;
+  cameraInput.disabled = true;
+  galleryInput.disabled = true;
+  removeImageButton.disabled = true;
+  imageDropZone.classList.add("is-cloud-disabled");
+  pendingImageData = null;
+  updateImagePreview();
+  await refreshCloudBoardData("initial");
+  await connectRealtime();
 }
 
 function notificationPermissionState() {
@@ -303,11 +431,11 @@ function normalizeCard(card) {
 }
 
 function savePeople(operation) {
-  trackCloudWrite(BoardRepository.savePeople(people, operation));
+  return persistRepositoryWrite(() => BoardRepository.savePeople(people, operation));
 }
 
-function saveCards() {
-  BoardRepository.saveCards(cards);
+function saveCards(operation) {
+  return persistRepositoryWrite(() => BoardRepository.saveCards(cards, operation));
 }
 
 function loadSuggestions() {
@@ -396,7 +524,9 @@ function uniqueTemplateNames(values) {
 }
 
 function saveWorkTemplates(operation) {
-  trackCloudWrite(BoardRepository.saveWorkTemplates(workTemplates, operation));
+  return persistRepositoryWrite(() =>
+    BoardRepository.saveWorkTemplates(workTemplates, operation),
+  );
 }
 
 function renderSuggestionList(field) {
@@ -720,6 +850,7 @@ function closeDialog() {
   pendingImageData = null;
   updateImagePreview();
   hideSuggestionLists();
+  if (pendingRealtimeRefresh) scheduleRealtimeRefresh();
 }
 
 function collectFormCard() {
@@ -731,7 +862,7 @@ function collectFormCard() {
     customer: fields.customer.value.trim(),
     assigneeId: fields.assignee.value,
     status: fields.status.value,
-    imageData: pendingImageData,
+    imageData: BoardRepository.isSupabaseMode ? null : pendingImageData,
   };
 }
 
@@ -742,8 +873,10 @@ function nextOrderFor(personId) {
 function saveFormCard() {
   const formCard = collectFormCard();
   const savedAt = new Date().toISOString();
+  const isEditing = Boolean(editingCardId);
+  let savedCard;
 
-  if (editingCardId) {
+  if (isEditing) {
     const index = cards.findIndex((card) => card.id === editingCardId);
     const previous = cards[index];
     cards[index] = {
@@ -759,20 +892,25 @@ function saveFormCard() {
           ? previous.order
           : nextOrderFor(formCard.assigneeId),
     };
+    savedCard = cards[index];
   } else {
-    cards.push({
+    savedCard = {
       id: crypto.randomUUID(),
       ...formCard,
       createdAt: savedAt,
       updatedAt: savedAt,
       completedAt: formCard.status === "done" ? new Date().toISOString() : null,
       order: nextOrderFor(formCard.assigneeId),
-    });
+    };
+    cards.push(savedCard);
   }
 
   normalizeOrders();
   rememberSuggestions(formCard);
-  saveCards();
+  saveCards({
+    type: isEditing ? "update" : "create",
+    card: { ...savedCard, imageData: null },
+  });
   renderBoard();
   closeDialog();
 }
@@ -790,7 +928,8 @@ function markCardDone(cardId) {
   if (!card) return;
   card.status = "done";
   card.completedAt = new Date().toISOString();
-  saveCards();
+  card.updatedAt = new Date().toISOString();
+  saveCards({ type: "update", card: { ...card, imageData: null } });
   renderBoard();
 }
 
@@ -800,8 +939,9 @@ function restoreCard(cardId) {
   card.status = "not-started";
   card.completedAt = null;
   card.order = nextOrderFor(card.assigneeId);
+  card.updatedAt = new Date().toISOString();
   normalizeOrders();
-  saveCards();
+  saveCards({ type: "update", card: { ...card, imageData: null } });
   renderBoard();
 }
 
@@ -906,7 +1046,7 @@ function endPointer() {
 
   state.placeholder.replaceWith(state.cardElement);
   persistDomOrder();
-  saveCards();
+  saveCards({ type: "reorder" });
   renderBoard();
 }
 
@@ -1048,7 +1188,7 @@ function deletePerson(personId) {
     );
     if (!shouldDelete) return;
     cards = cards.filter((card) => card.assigneeId !== personId);
-    saveCards();
+    if (!BoardRepository.isSupabaseMode) saveCards();
   }
 
   people = people.filter((item) => item.id !== personId);
@@ -1225,6 +1365,7 @@ historyList.addEventListener("click", (event) => {
 });
 
 async function importFromImage(file) {
+  if (BoardRepository.isSupabaseMode) return;
   if (!file || !file.type.startsWith("image/")) return;
   try {
     pendingImageData = await processImageFile(file);
@@ -1307,9 +1448,10 @@ completeButton.addEventListener("click", () => {
 
 deleteButton.addEventListener("click", () => {
   if (!editingCardId) return;
+  const deletedCardId = editingCardId;
   cards = cards.filter((card) => card.id !== editingCardId);
   normalizeOrders();
-  saveCards();
+  saveCards({ type: "delete", cardId: deletedCardId });
   renderBoard();
   closeDialog();
 });
@@ -1349,5 +1491,7 @@ renderBoard();
 
 window.CloudBoardApp = Object.freeze({
   load: loadCloudBoardData,
+  refresh: () => refreshCloudBoardData("manual"),
+  disconnect: disconnectRealtime,
   setSyncState: setCloudSyncState,
 });

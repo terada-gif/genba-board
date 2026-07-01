@@ -1,5 +1,19 @@
 (function initializeSupabaseRepository(global) {
   const SUPABASE_SDK_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/+esm";
+  const JOB_COLUMNS = [
+    "id",
+    "assignee_id",
+    "status",
+    "company",
+    "plate_suffix",
+    "car_name",
+    "work_content",
+    "customer_name",
+    "sort_order",
+    "completed_at",
+    "created_at",
+    "updated_at",
+  ].join(", ");
 
   function isUnsafeBrowserKey(key) {
     if (!key) return false;
@@ -13,6 +27,39 @@
     } catch {
       return false;
     }
+  }
+
+  function mapJobRow(row) {
+    return {
+      id: row.id,
+      assigneeId: row.assignee_id,
+      status: row.status,
+      company: row.company,
+      plate: row.plate_suffix,
+      car: row.car_name,
+      work: row.work_content,
+      customer: row.customer_name,
+      order: row.sort_order,
+      completedAt: row.completed_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      imageData: null,
+    };
+  }
+
+  function mapJobToRow(card) {
+    return {
+      id: card.id,
+      assignee_id: card.assigneeId,
+      status: card.status,
+      company: card.company,
+      plate_suffix: card.plate,
+      car_name: card.car,
+      work_content: card.work,
+      customer_name: card.customer,
+      sort_order: card.order,
+      completed_at: card.completedAt || null,
+    };
   }
 
   class SupabaseRepository {
@@ -159,12 +206,98 @@
       if (failed) throw failed.error;
     }
 
+    async loadJobs() {
+      const client = await this.getClient();
+      const { data, error } = await client
+        .from("jobs")
+        .select(JOB_COLUMNS)
+        .neq("status", "done")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data || []).map(mapJobRow);
+    }
+
+    async loadCompletedJobs(days = 30) {
+      const client = await this.getClient();
+      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await client
+        .from("jobs")
+        .select(JOB_COLUMNS)
+        .eq("status", "done")
+        .gte("completed_at", cutoff)
+        .order("completed_at", { ascending: false });
+      if (error) throw error;
+      return (data || []).map(mapJobRow);
+    }
+
+    async createJob(card) {
+      const client = await this.getClient();
+      const { data, error } = await client
+        .from("jobs")
+        .insert(mapJobToRow(card))
+        .select(JOB_COLUMNS)
+        .single();
+      if (error) throw error;
+      return mapJobRow(data);
+    }
+
+    async updateJob(card) {
+      const client = await this.getClient();
+      const row = mapJobToRow(card);
+      delete row.id;
+      const { error } = await client.from("jobs").update(row).eq("id", card.id);
+      if (error) throw error;
+    }
+
+    async deleteJob(cardId) {
+      const client = await this.getClient();
+      const { error } = await client.from("jobs").delete().eq("id", cardId);
+      if (error) throw error;
+    }
+
+    async updateJobOrder(cards) {
+      const activeCards = cards.filter((card) => card.status !== "done");
+      const client = await this.getClient();
+      const results = await Promise.all(
+        activeCards.map((card) =>
+          client
+            .from("jobs")
+            .update({ assignee_id: card.assigneeId, sort_order: card.order })
+            .eq("id", card.id),
+        ),
+      );
+      const failed = results.find((result) => result.error);
+      if (failed) throw failed.error;
+    }
+
+    async subscribeToChanges(onChange, onStatus) {
+      const client = await this.getClient();
+      let channel = client.channel("digital-whiteboard-v1");
+      ["workers", "jobs", "work_templates"].forEach((table) => {
+        channel = channel.on(
+          "postgres_changes",
+          { event: "*", schema: "public", table },
+          (payload) => onChange(payload),
+        );
+      });
+      return channel.subscribe((status, error) => onStatus(status, error));
+    }
+
+    async unsubscribeFromChanges(channel) {
+      if (!channel) return;
+      const client = await this.getClient();
+      await client.removeChannel(channel);
+    }
+
     async loadInitialBoardData() {
-      const [people, workTemplates] = await Promise.all([
+      const [people, workTemplates, activeJobs, completedJobs] = await Promise.all([
         this.loadWorkers(),
         this.loadWorkTemplates(),
+        this.loadJobs(),
+        this.loadCompletedJobs(),
       ]);
-      return { people, workTemplates, cards: [] };
+      return { people, workTemplates, cards: [...activeJobs, ...completedJobs] };
     }
   }
 
